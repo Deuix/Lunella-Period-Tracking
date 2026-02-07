@@ -221,25 +221,6 @@ function isSameDay(first: Date, second: Date): boolean {
   );
 }
 
-function ordinal(value: number): string {
-  const mod100 = value % 100;
-  if (mod100 >= 11 && mod100 <= 13) {
-    return `${value}th`;
-  }
-
-  const mod10 = value % 10;
-  if (mod10 === 1) {
-    return `${value}st`;
-  }
-  if (mod10 === 2) {
-    return `${value}nd`;
-  }
-  if (mod10 === 3) {
-    return `${value}rd`;
-  }
-  return `${value}th`;
-}
-
 function buildCalendarDays(visibleMonth: Date): CalendarDay[] {
   const year = visibleMonth.getFullYear();
   const month = visibleMonth.getMonth();
@@ -945,40 +926,49 @@ export default function Index() {
   const stepButtonLabel =
     step === 0 ? "get started" : step === 4 ? "Finish onboarding" : "Continue";
 
-  const welcomeMetric = cycleContext.isPeriodDay
-    ? `${ordinal(cycleContext.periodDayNumber)} day of period`
-    : `${cycleContext.daysUntilNextPeriod} days until next period`;
-
-  const ovulationMetric =
-    cycleContext.daysUntilOvulation === 0
-      ? "Ovulation day is today"
-      : `${cycleContext.daysUntilOvulation} days until next ovulation`;
-
-  const fertilityMetric = cycleContext.isFertilityWindow
-    ? `${cycleContext.fertilityDaysLeft} days left in fertility window`
-    : `${Math.max(0, cycleContext.daysUntilFertilityStart)} days until fertility window`;
-
-  const insightCards = [
+  const insightCards: {
+    heroValue: string;
+    heroLabel: string;
+    subtitle: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    bgColor: string;
+    accentColor: string;
+    iconBgColor: string;
+  }[] = [
     {
-      title: welcomeMetric,
-      subtitle: cycleContext.isPeriodDay ? "Keep logging symptoms and flow." : "Prediction based on your cycle settings.",
+      heroValue: cycleContext.isPeriodDay
+        ? `Day ${cycleContext.periodDayNumber}`
+        : `${cycleContext.daysUntilNextPeriod}`,
+      heroLabel: cycleContext.isPeriodDay ? "of your period" : "days to period",
+      subtitle: cycleContext.isPeriodDay
+        ? "Log symptoms & flow for accuracy"
+        : `Next: ${cycleContext.nextPeriodStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+      icon: "water",
+      bgColor: "#FFF0F3",
+      accentColor: "#D4587A",
+      iconBgColor: "#FDDDE5",
     },
     {
-      title: ovulationMetric,
-      subtitle: `Expected on ${cycleContext.nextOvulationDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })}`,
+      heroValue: cycleContext.daysUntilOvulation === 0
+        ? "Today"
+        : `${cycleContext.daysUntilOvulation}`,
+      heroLabel: cycleContext.daysUntilOvulation === 0 ? "is ovulation day" : "days to ovulation",
+      subtitle: `Expected ${cycleContext.nextOvulationDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+      icon: "egg",
+      bgColor: "#EEF4FF",
+      accentColor: "#5B7FC2",
+      iconBgColor: "#DCE8FD",
     },
     {
-      title: fertilityMetric,
-      subtitle: `${cycleContext.fertilityStartDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })} - ${cycleContext.fertilityEndDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })}`,
+      heroValue: cycleContext.isFertilityWindow
+        ? `${cycleContext.fertilityDaysLeft}`
+        : `${Math.max(0, cycleContext.daysUntilFertilityStart)}`,
+      heroLabel: cycleContext.isFertilityWindow ? "fertile days left" : "days to fertile window",
+      subtitle: `${cycleContext.fertilityStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${cycleContext.fertilityEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+      icon: "leaf",
+      bgColor: "#EEFBF3",
+      accentColor: "#4A9D6E",
+      iconBgColor: "#D5F2E1",
     },
   ];
 
@@ -1364,16 +1354,22 @@ export default function Index() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.highlightCapsule}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.insightRow}>
-            {insightCards.map((card) => (
-              <View key={card.title} style={styles.insightCard}>
-                <Text style={styles.insightTitle}>{card.title}</Text>
-                <Text style={styles.insightSubtitle}>{card.subtitle}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.insightRow}>
+          {insightCards.map((card) => (
+            <View key={card.heroLabel} style={[styles.insightCard, { backgroundColor: card.bgColor }]}>
+              <View style={styles.insightCardTop}>
+                <View style={[styles.insightIconCircle, { backgroundColor: card.iconBgColor }]}>
+                  <Ionicons name={card.icon} size={18} color={card.accentColor} />
+                </View>
               </View>
-            ))}
-          </ScrollView>
-        </View>
+              <View style={styles.insightCardBody}>
+                <Text style={[styles.insightHeroValue, { color: card.accentColor }]}>{card.heroValue}</Text>
+                <Text style={styles.insightHeroLabel}>{card.heroLabel}</Text>
+              </View>
+              <Text style={styles.insightSubtitle}>{card.subtitle}</Text>
+            </View>
+          ))}
+        </ScrollView>
 
         <ScrollView
           horizontal
@@ -2612,40 +2608,47 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
-  highlightCapsule: {
-    marginTop: 10,
-    borderRadius: 44,
-    borderWidth: 1,
-    borderColor: "#E8DBEA",
-    backgroundColor: "#FFFDFE",
-    paddingVertical: 12,
-    paddingHorizontal: 2,
-  },
   insightRow: {
-    paddingHorizontal: 12,
-    gap: 10,
+    paddingHorizontal: 18,
+    gap: 12,
+    paddingVertical: 4,
   },
   insightCard: {
-    width: 270,
-    minHeight: 142,
-    borderRadius: 36,
-    backgroundColor: "#F7EEF7",
-    borderWidth: 1,
-    borderColor: "#E5D7E8",
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    gap: 6,
+    width: 200,
+    borderRadius: 24,
+    padding: 16,
+    gap: 10,
   },
-  insightTitle: {
-    fontSize: 17,
-    color: "#251C2B",
-    fontWeight: "700",
-    lineHeight: 23,
+  insightCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  insightIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  insightCardBody: {
+    gap: 2,
+  },
+  insightHeroValue: {
+    fontSize: 36,
+    fontWeight: "900",
+    lineHeight: 40,
+  },
+  insightHeroLabel: {
+    fontSize: 14,
+    color: "#4A4050",
+    fontWeight: "600",
+    lineHeight: 19,
   },
   insightSubtitle: {
-    fontSize: 13,
-    color: "#7E7081",
-    lineHeight: 18,
+    fontSize: 12,
+    color: "#8A7C8D",
+    lineHeight: 17,
+    fontWeight: "500",
   },
   monthChipRow: {
     paddingTop: 14,
