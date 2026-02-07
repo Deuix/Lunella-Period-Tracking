@@ -62,6 +62,17 @@ type MonthlyInsight = {
   predictedSymptomScore: number;
 };
 
+type PregnancyProbabilityDetail = {
+  level: "High" | "Medium" | "Low";
+  chanceRangeLabel: string;
+  summary: string;
+  recommendation: string;
+  ovulationDate: Date;
+  fertilityStartDate: Date;
+  fertilityEndDate: Date;
+  cycleDayNumber: number;
+};
+
 type CalendarDay = {
   date: Date;
   dayNumber: number;
@@ -339,6 +350,73 @@ function getCycleContext(
   };
 }
 
+function getCycleTimingForDate(targetDate: Date, lastPeriodStart: Date, cycleLength: number) {
+  const selectedDate = startOfDay(targetDate);
+  const baseline = startOfDay(lastPeriodStart);
+  const cycleIndex = Math.floor(diffInDays(selectedDate, baseline) / cycleLength);
+  const cycleStart = addDays(baseline, cycleIndex * cycleLength);
+  const ovulationDate = addDays(cycleStart, cycleLength - 14);
+  const fertilityStartDate = addDays(ovulationDate, -5);
+  const fertilityEndDate = addDays(ovulationDate, 1);
+
+  return {
+    ovulationDate,
+    fertilityStartDate,
+    fertilityEndDate,
+    cycleDayNumber: diffInDays(selectedDate, cycleStart) + 1,
+    daysFromOvulation: diffInDays(selectedDate, ovulationDate),
+  };
+}
+
+function buildPregnancyProbabilityDetail(
+  targetDate: Date,
+  lastPeriodStart: Date,
+  cycleLength: number,
+  periodLength: number,
+  goals: GoalOption[],
+): PregnancyProbabilityDetail {
+  const timing = getCycleTimingForDate(targetDate, lastPeriodStart, cycleLength);
+  const category = getDayCategory(targetDate, lastPeriodStart, cycleLength, periodLength);
+  const isTryingToConceive = goals.includes("Trying To Conceive");
+
+  let level: PregnancyProbabilityDetail["level"] = "Low";
+  let chanceRangeLabel = "5-10%";
+  let summary = "Outside your fertile window, conception probability is usually lower.";
+  let recommendation = "Use this day for hydration, symptom logging, and cycle planning.";
+
+  if (category === "period") {
+    level = "Low";
+    chanceRangeLabel = "1-5%";
+    summary = "During period days, pregnancy probability is generally very low.";
+    recommendation = "Focus on comfort care and track flow to improve prediction accuracy.";
+  } else if (Math.abs(timing.daysFromOvulation) <= 1) {
+    level = "High";
+    chanceRangeLabel = "30-40%";
+    summary = "This day is very close to ovulation, so probability is highest.";
+    recommendation = isTryingToConceive
+      ? "If trying to conceive, this is one of your best timing days."
+      : "Use protection if you want to avoid pregnancy today.";
+  } else if (timing.daysFromOvulation >= -5 && timing.daysFromOvulation <= 2) {
+    level = "Medium";
+    chanceRangeLabel = "12-25%";
+    summary = "You are within the fertile window, with moderate pregnancy probability.";
+    recommendation = isTryingToConceive
+      ? "Plan intercourse around this window and keep lifestyle habits consistent."
+      : "Consider backup protection during fertile-window days.";
+  }
+
+  return {
+    level,
+    chanceRangeLabel,
+    summary,
+    recommendation,
+    ovulationDate: timing.ovulationDate,
+    fertilityStartDate: timing.fertilityStartDate,
+    fertilityEndDate: timing.fertilityEndDate,
+    cycleDayNumber: timing.cycleDayNumber,
+  };
+}
+
 function buildMonthlyInsight(
   monthDate: Date,
   lastPeriodStart: Date,
@@ -574,6 +652,7 @@ export default function Index() {
   }, []);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(2);
   const [selectedInsightsMonthIndex, setSelectedInsightsMonthIndex] = useState(2);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(startOfDay(new Date()));
 
   const onboardingAnimation = useRef(new Animated.Value(1)).current;
   const breathingScale = useRef(new Animated.Value(1)).current;
@@ -834,6 +913,25 @@ export default function Index() {
     const total = scores.reduce((sum, value) => sum + value, 0);
     return Math.round(total / Math.max(1, scores.length));
   }, [monthlyInsights]);
+
+  const selectedDatePregnancyDetail = useMemo(
+    () =>
+      buildPregnancyProbabilityDetail(
+        selectedCalendarDate,
+        lastPeriodDate,
+        cycleLength,
+        periodLength,
+        goals,
+      ),
+    [selectedCalendarDate, lastPeriodDate, cycleLength, periodLength, goals],
+  );
+
+  const selectedDateLevelStyle =
+    selectedDatePregnancyDetail.level === "High"
+      ? styles.probabilityBadgeHigh
+      : selectedDatePregnancyDetail.level === "Medium"
+        ? styles.probabilityBadgeMedium
+        : styles.probabilityBadgeLow;
 
   const canContinue =
     step === 1
@@ -1199,6 +1297,54 @@ export default function Index() {
     );
   };
 
+  const renderPregnancyProbabilityCard = () => {
+    const selectedDateLabel = selectedCalendarDate.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+
+    return (
+      <View style={styles.probabilityCard}>
+        <View style={styles.probabilityHeaderRow}>
+          <View>
+            <Text style={styles.probabilityTitle}>Pregnancy Probability</Text>
+            <Text style={styles.probabilityDateLabel}>{selectedDateLabel}</Text>
+          </View>
+          <View style={[styles.probabilityBadge, selectedDateLevelStyle]}>
+            <Text style={styles.probabilityBadgeText}>
+              {selectedDatePregnancyDetail.level} ({selectedDatePregnancyDetail.chanceRangeLabel})
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.probabilitySummary}>{selectedDatePregnancyDetail.summary}</Text>
+
+        <View style={styles.probabilityMetaRow}>
+          <Text style={styles.probabilityMetaText}>Cycle day {selectedDatePregnancyDetail.cycleDayNumber}</Text>
+          <Text style={styles.probabilityMetaText}>
+            Ovulation {selectedDatePregnancyDetail.ovulationDate.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}
+          </Text>
+        </View>
+
+        <Text style={styles.probabilityWindowText}>
+          Fertility window: {selectedDatePregnancyDetail.fertilityStartDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })} - {selectedDatePregnancyDetail.fertilityEndDate.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}
+        </Text>
+
+        <Text style={styles.probabilityRecommendation}>{selectedDatePregnancyDetail.recommendation}</Text>
+      </View>
+    );
+  };
+
   const renderHomeTab = () => {
     return (
       <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
@@ -1261,6 +1407,7 @@ export default function Index() {
 
           <View style={styles.calendarGrid}>
             {decoratedHomeDays.map((day) => {
+              const isSelectedDate = isSameDay(day.date, selectedCalendarDate);
               const dayCategoryStyle =
                 day.category === "period"
                   ? styles.dayPeriod
@@ -1271,12 +1418,14 @@ export default function Index() {
                       : null;
 
               return (
-                <View
+                <Pressable
                   key={day.date.toISOString()}
+                  onPress={() => setSelectedCalendarDate(startOfDay(day.date))}
                   style={[
                     styles.dayCell,
                     !day.isCurrentMonth && styles.dayCellMuted,
                     dayCategoryStyle,
+                    isSelectedDate && styles.selectedCalendarDayOutline,
                     day.isToday && styles.todayOutline,
                   ]}>
                   <Text
@@ -1287,7 +1436,7 @@ export default function Index() {
                     ]}>
                     {day.dayNumber}
                   </Text>
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -1306,6 +1455,9 @@ export default function Index() {
               <Text style={styles.legendText}>Fertility</Text>
             </View>
           </View>
+
+          <Text style={styles.calendarHintText}>Tap any day to view pregnancy chance details.</Text>
+          {renderPregnancyProbabilityCard()}
         </View>
       </ScrollView>
     );
@@ -1455,6 +1607,7 @@ export default function Index() {
 
           <View style={styles.calendarGrid}>
             {decoratedInsightsDays.map((day) => {
+              const isSelectedDate = isSameDay(day.date, selectedCalendarDate);
               const dayCategoryStyle =
                 day.category === "period"
                   ? styles.dayPeriod
@@ -1465,12 +1618,14 @@ export default function Index() {
                       : null;
 
               return (
-                <View
+                <Pressable
                   key={`insight-day-${day.date.toISOString()}`}
+                  onPress={() => setSelectedCalendarDate(startOfDay(day.date))}
                   style={[
                     styles.dayCell,
                     !day.isCurrentMonth && styles.dayCellMuted,
                     dayCategoryStyle,
+                    isSelectedDate && styles.selectedCalendarDayOutline,
                     day.isToday && styles.todayOutline,
                   ]}>
                   <Text
@@ -1481,7 +1636,7 @@ export default function Index() {
                     ]}>
                     {day.dayNumber}
                   </Text>
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -1500,6 +1655,9 @@ export default function Index() {
               <Text style={styles.legendText}>Fertility</Text>
             </View>
           </View>
+
+          <Text style={styles.calendarHintText}>Tap any day to view pregnancy chance details.</Text>
+          {renderPregnancyProbabilityCard()}
         </View>
 
         <Text style={styles.insightSectionTitle}>
@@ -1653,18 +1811,188 @@ export default function Index() {
   };
 
   const renderProfileTab = () => {
+    const profileName = name.trim() || "Gul";
+    const profileGoals = goals.length > 0 ? goals.join(", ") : "Cycle Tracking";
+
+    if (profileView === "settings") {
+      return (
+        <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.settingsHeaderRow}>
+            <TouchableOpacity style={styles.settingsBackButton} onPress={() => setProfileView("main")}>
+              <Ionicons name="chevron-back" size={20} color="#4B3E53" />
+            </TouchableOpacity>
+            <Text style={styles.settingsHeaderTitle}>Settings</Text>
+            <View style={styles.settingsHeaderSpacer} />
+          </View>
+
+          <View style={styles.settingsCard}>
+            <Text style={styles.settingsSectionTitle}>Notifications</Text>
+
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsSwitchTextWrap}>
+                <Text style={styles.settingsRowTitle}>Cycle reminders</Text>
+                <Text style={styles.settingsRowSubtitle}>Period, ovulation, fertility notifications</Text>
+              </View>
+              <Switch
+                value={remindersEnabled}
+                onValueChange={setRemindersEnabled}
+                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsSwitchTextWrap}>
+                <Text style={styles.settingsRowTitle}>Insight nudges</Text>
+                <Text style={styles.settingsRowSubtitle}>Daily tips and mood check-in prompts</Text>
+              </View>
+              <Switch
+                value={insightNudgesEnabled}
+                onValueChange={setInsightNudgesEnabled}
+                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          <View style={styles.settingsCard}>
+            <Text style={styles.settingsSectionTitle}>Privacy & Security</Text>
+
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsSwitchTextWrap}>
+                <Text style={styles.settingsRowTitle}>App passcode lock</Text>
+                <Text style={styles.settingsRowSubtitle}>Protect private cycle information</Text>
+              </View>
+              <Switch
+                value={pinLockEnabled}
+                onValueChange={setPinLockEnabled}
+                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          <View style={styles.settingsCard}>
+            <Text style={styles.settingsSectionTitle}>Integrations</Text>
+
+            <View style={styles.settingsSwitchRow}>
+              <View style={styles.settingsSwitchTextWrap}>
+                <Text style={styles.settingsRowTitle}>Health sync</Text>
+                <Text style={styles.settingsRowSubtitle}>Sync cycle data with health apps</Text>
+              </View>
+              <Switch
+                value={healthSyncEnabled}
+                onValueChange={setHealthSyncEnabled}
+                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          <View style={styles.settingsCard}>
+            <Text style={styles.settingsSectionTitle}>General</Text>
+
+            <TouchableOpacity style={styles.settingsNavRow}>
+              <Text style={styles.settingsRowTitle}>Language</Text>
+              <View style={styles.settingsNavRight}>
+                <Text style={styles.settingsNavValue}>English</Text>
+                <Ionicons name="chevron-forward" size={16} color="#85788A" />
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingsNavRow}>
+              <Text style={styles.settingsRowTitle}>Export cycle data</Text>
+              <Ionicons name="chevron-forward" size={16} color="#85788A" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingsNavRow}>
+              <Text style={styles.settingsRowTitle}>Help & support</Text>
+              <Ionicons name="chevron-forward" size={16} color="#85788A" />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      );
+    }
+
     return (
       <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>Profile</Text>
+        <View style={styles.profileHeaderRow}>
+          <View style={styles.profileIdentityWrap}>
+            <View style={styles.profileAvatarLarge}>
+              <Text style={styles.profileAvatarLargeText}>{profileName[0].toUpperCase()}</Text>
+            </View>
+            <View>
+              <Text style={styles.profileName}>{profileName}</Text>
+              <Text style={styles.profileMetaText}>{profileGoals}</Text>
+            </View>
+          </View>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Name</Text>
-          <Text style={styles.infoValue}>{name}</Text>
+          <TouchableOpacity style={styles.profileSettingsIconButton} onPress={() => setProfileView("settings")}>
+            <Ionicons name="settings-outline" size={22} color="#5D4F64" />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Last period logged</Text>
-          <Text style={styles.infoValue}>{lastPeriodDate.toLocaleDateString("en-US")}</Text>
+        <View style={styles.profileHeroCard}>
+          <Text style={styles.profileHeroTitle}>Your cycle profile is up to date</Text>
+          <Text style={styles.profileHeroSubtitle}>
+            Keep your settings accurate to improve predictions and insights.
+          </Text>
+        </View>
+
+        <View style={styles.profileStatsGrid}>
+          <View style={[styles.profileStatCard, styles.profileStatCardLavender]}>
+            <Text style={styles.profileStatTitle}>Cycle length</Text>
+            <Text style={styles.profileStatValue}>{cycleLength} days</Text>
+          </View>
+
+          <View style={[styles.profileStatCard, styles.profileStatCardPink]}>
+            <Text style={styles.profileStatTitle}>Period length</Text>
+            <Text style={styles.profileStatValue}>{periodLength} days</Text>
+          </View>
+
+          <View style={[styles.profileStatCard, styles.profileStatCardMint]}>
+            <Text style={styles.profileStatTitle}>Last logged</Text>
+            <Text style={styles.profileStatValueSmall}>{lastPeriodDate.toLocaleDateString("en-US")}</Text>
+          </View>
+
+          <View style={[styles.profileStatCard, styles.profileStatCardPeach]}>
+            <Text style={styles.profileStatTitle}>Next period</Text>
+            <Text style={styles.profileStatValueSmall}>{cycleContext.nextPeriodStart.toLocaleDateString("en-US")}</Text>
+          </View>
+        </View>
+
+        <View style={styles.profileMenuCard}>
+          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("insights")}>
+            <View style={styles.profileMenuLabelWrap}>
+              <Text style={styles.profileMenuTitle}>Cycle insights</Text>
+              <Text style={styles.profileMenuSubtitle}>See monthly trends and history</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("tips")}>
+            <View style={styles.profileMenuLabelWrap}>
+              <Text style={styles.profileMenuTitle}>Tips and wellbeing</Text>
+              <Text style={styles.profileMenuSubtitle}>Mood tracker, breathing, self-care</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("ai")}>
+            <View style={styles.profileMenuLabelWrap}>
+              <Text style={styles.profileMenuTitle}>AI assistant</Text>
+              <Text style={styles.profileMenuSubtitle}>Get personalized cycle guidance</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setProfileView("settings")}>
+            <View style={styles.profileMenuLabelWrap}>
+              <Text style={styles.profileMenuTitle}>App settings</Text>
+              <Text style={styles.profileMenuSubtitle}>Notifications, privacy, integrations</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
+          </TouchableOpacity>
         </View>
 
         <NumberAdjuster
@@ -2042,9 +2370,92 @@ const styles = StyleSheet.create({
   dayFertility: {
     backgroundColor: "#CDEFD9",
   },
+  selectedCalendarDayOutline: {
+    borderWidth: 2,
+    borderColor: "#6A5A88",
+  },
   todayOutline: {
     borderWidth: 1,
     borderColor: "#6E5B79",
+  },
+  calendarHintText: {
+    marginTop: 10,
+    color: "#7B6E80",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  probabilityCard: {
+    marginTop: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E7DCE6",
+    backgroundColor: "#FFFFFFF2",
+    padding: 12,
+    gap: 6,
+  },
+  probabilityHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  probabilityTitle: {
+    color: "#2D2433",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  probabilityDateLabel: {
+    color: "#8B7D8E",
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  probabilityBadge: {
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  probabilityBadgeHigh: {
+    backgroundColor: "#FCDDE6",
+  },
+  probabilityBadgeMedium: {
+    backgroundColor: "#FDF1D9",
+  },
+  probabilityBadgeLow: {
+    backgroundColor: "#E9EFF9",
+  },
+  probabilityBadgeText: {
+    color: "#4A3F53",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  probabilitySummary: {
+    color: "#4C3F53",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  probabilityMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  probabilityMetaText: {
+    color: "#7B6F7E",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  probabilityWindowText: {
+    color: "#6E6172",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  probabilityRecommendation: {
+    color: "#5A4E60",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
   },
   confirmedDateText: {
     marginTop: 14,
@@ -2534,6 +2945,215 @@ const styles = StyleSheet.create({
   },
   aiSendButtonDisabled: {
     backgroundColor: "#C2AFDD",
+  },
+  settingsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  settingsBackButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E2D6E5",
+    backgroundColor: "#FFFFFFEE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsHeaderTitle: {
+    fontSize: 24,
+    color: "#2F2436",
+    fontWeight: "800",
+  },
+  settingsHeaderSpacer: {
+    width: 36,
+  },
+  settingsCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E7DCE6",
+    backgroundColor: "#FFFFFFEE",
+    padding: 14,
+    gap: 10,
+  },
+  settingsSectionTitle: {
+    color: "#3A2F40",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  settingsSwitchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  settingsSwitchTextWrap: {
+    flex: 1,
+    gap: 3,
+  },
+  settingsRowTitle: {
+    color: "#3F3346",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  settingsRowSubtitle: {
+    color: "#817486",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  settingsNavRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "#F0E8F2",
+    paddingTop: 10,
+  },
+  settingsNavRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  settingsNavValue: {
+    color: "#8B7D8F",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  profileHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  profileIdentityWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  profileAvatarLarge: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#8F72C5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileAvatarLargeText: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  profileName: {
+    color: "#2C2232",
+    fontSize: 24,
+    fontWeight: "800",
+  },
+  profileMetaText: {
+    color: "#7D6F81",
+    fontSize: 13,
+    marginTop: 2,
+  },
+  profileSettingsIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E2D6E5",
+    backgroundColor: "#FFFFFFEE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileHeroCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E8DCEC",
+    backgroundColor: "#F7EEF9",
+    padding: 14,
+    gap: 6,
+  },
+  profileHeroTitle: {
+    color: "#2F2436",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  profileHeroSubtitle: {
+    color: "#7C6F80",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  profileStatsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  profileStatCard: {
+    width: "48.5%",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E7DCE6",
+    padding: 12,
+    gap: 5,
+  },
+  profileStatCardLavender: {
+    backgroundColor: "#F5EEFB",
+  },
+  profileStatCardPink: {
+    backgroundColor: "#FDF0F5",
+  },
+  profileStatCardMint: {
+    backgroundColor: "#EDF8F2",
+  },
+  profileStatCardPeach: {
+    backgroundColor: "#FFF4EB",
+  },
+  profileStatTitle: {
+    color: "#726575",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  profileStatValue: {
+    color: "#2F2436",
+    fontSize: 27,
+    lineHeight: 32,
+    fontWeight: "800",
+  },
+  profileStatValueSmall: {
+    color: "#2F2436",
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: "800",
+  },
+  profileMenuCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E7DCE6",
+    backgroundColor: "#FFFFFFEE",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  profileMenuRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0E7F2",
+  },
+  profileMenuLabelWrap: {
+    flex: 1,
+    gap: 2,
+    paddingRight: 10,
+  },
+  profileMenuTitle: {
+    color: "#3E3345",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  profileMenuSubtitle: {
+    color: "#8A7D8E",
+    fontSize: 12,
   },
   tipsQuestion: {
     color: "#2F2436",
