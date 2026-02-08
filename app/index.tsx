@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,8 +16,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
+import { getDateLocale, persistLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "../i18n";
 
-type GoalOption = "Cycle Tracking" | "Trying To Conceive" | "Pregnancy Tracking";
+type GoalOption = "cycle_tracking" | "trying_to_conceive" | "pregnancy_tracking";
 type HomeTab = "home" | "insights" | "ai" | "tips" | "profile";
 type DayCategory = "period" | "ovulation" | "fertility" | "normal";
 type BreathPhase = "ready" | "inhale" | "hold" | "exhale" | "done";
@@ -30,25 +33,26 @@ type AiMessage = {
 
 type MoodOption = {
   emoji: string;
-  label: string;
+  labelKey: string;
 };
 
 type MenstrualFlowOption = {
-  label: "Light" | "Medium" | "Heavy";
+  key: string;
+  labelKey: string;
   drops: number;
 };
 
 type GirlTip = {
-  title: string;
-  detail: string;
+  titleKey: string;
+  detailKey: string;
 };
 
 type BreathStep = {
   phase: Exclude<BreathPhase, "ready" | "done">;
-  label: string;
+  labelKey: string;
   seconds: number;
   targetScale: number;
-  guidance: string;
+  guidanceKey: string;
 };
 
 type MonthlyInsight = {
@@ -109,58 +113,66 @@ type NumberAdjusterProps = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const GOAL_OPTIONS: GoalOption[] = [
-  "Cycle Tracking",
-  "Trying To Conceive",
-  "Pregnancy Tracking",
+const GOAL_OPTIONS: { id: GoalOption; labelKey: string }[] = [
+  { id: "cycle_tracking", labelKey: "goals.cycleTracking" },
+  { id: "trying_to_conceive", labelKey: "goals.tryingToConceive" },
+  { id: "pregnancy_tracking", labelKey: "goals.pregnancyTracking" },
 ];
-const WEEK_DAYS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEK_DAY_KEYS = [
+  "weekDays.sun",
+  "weekDays.mon",
+  "weekDays.tue",
+  "weekDays.wed",
+  "weekDays.thu",
+  "weekDays.fri",
+  "weekDays.sat",
+];
 
-const NAV_ITEMS: { key: HomeTab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: "home", label: "Home", icon: "home" },
-  { key: "insights", label: "Insights", icon: "bar-chart" },
-  { key: "ai", label: "AI", icon: "sparkles" },
-  { key: "tips", label: "Tips", icon: "bulb" },
-  { key: "profile", label: "Profile", icon: "person" },
+const NAV_ITEMS: { key: HomeTab; labelKey: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: "home", labelKey: "nav.home", icon: "home" },
+  { key: "insights", labelKey: "nav.insights", icon: "bar-chart" },
+  { key: "ai", labelKey: "nav.ai", icon: "sparkles" },
+  { key: "tips", labelKey: "nav.tips", icon: "bulb" },
+  { key: "profile", labelKey: "nav.profile", icon: "person" },
 ];
 
 const MOOD_OPTIONS: MoodOption[] = [
-  { emoji: "😊", label: "Happy" },
-  { emoji: "😌", label: "Calm" },
-  { emoji: "🥰", label: "Loved" },
-  { emoji: "😴", label: "Tired" },
-  { emoji: "😣", label: "Cramps" },
-  { emoji: "😕", label: "Low" },
-  { emoji: "😤", label: "Stressed" },
-  { emoji: "🤕", label: "Headache" },
+  { emoji: "😊", labelKey: "moods.happy" },
+  { emoji: "😌", labelKey: "moods.calm" },
+  { emoji: "🥰", labelKey: "moods.loved" },
+  { emoji: "😴", labelKey: "moods.tired" },
+  { emoji: "😣", labelKey: "moods.cramps" },
+  { emoji: "😕", labelKey: "moods.low" },
+  { emoji: "😤", labelKey: "moods.stressed" },
+  { emoji: "🤕", labelKey: "moods.headache" },
 ];
 
 const MENSTRUAL_FLOW_OPTIONS: MenstrualFlowOption[] = [
-  { label: "Light", drops: 1 },
-  { label: "Medium", drops: 1 },
-  { label: "Heavy", drops: 2 },
+  { key: "light", labelKey: "flow.light", drops: 1 },
+  { key: "medium", labelKey: "flow.medium", drops: 1 },
+  { key: "heavy", labelKey: "flow.heavy", drops: 2 },
 ];
 
 const GIRL_TIPS: GirlTip[] = [
   {
-    title: "Warm ginger tea",
-    detail: "Drink ginger tea for cramps and bloating support.",
+    titleKey: "girlTips.tip1Title",
+    detailKey: "girlTips.tip1Detail",
   },
   {
-    title: "Chamomile at night",
-    detail: "A calming tea can improve sleep before your period.",
+    titleKey: "girlTips.tip2Title",
+    detailKey: "girlTips.tip2Detail",
   },
   {
-    title: "Hydration check",
-    detail: "Add one extra glass of water to reduce fatigue.",
+    titleKey: "girlTips.tip3Title",
+    detailKey: "girlTips.tip3Detail",
   },
   {
-    title: "Iron-rich snack",
-    detail: "Try dates, pumpkin seeds, or spinach with lemon.",
+    titleKey: "girlTips.tip4Title",
+    detailKey: "girlTips.tip4Detail",
   },
   {
-    title: "Gentle movement",
-    detail: "A 15-minute walk can ease mood swings and tension.",
+    titleKey: "girlTips.tip5Title",
+    detailKey: "girlTips.tip5Detail",
   },
 ];
 
@@ -168,24 +180,24 @@ const BREATHING_TOTAL_ROUNDS = 4;
 const BREATHING_STEPS: BreathStep[] = [
   {
     phase: "inhale",
-    label: "Inhale",
+    labelKey: "breathing.inhaleLabel",
     seconds: 4,
     targetScale: 1.2,
-    guidance: "Breathe in slowly through your nose.",
+    guidanceKey: "breathing.inhaleGuidance",
   },
   {
     phase: "hold",
-    label: "Hold",
+    labelKey: "breathing.holdLabel",
     seconds: 3,
     targetScale: 1.2,
-    guidance: "Hold gently and relax your shoulders.",
+    guidanceKey: "breathing.holdGuidance",
   },
   {
     phase: "exhale",
-    label: "Exhale",
+    labelKey: "breathing.exhaleLabel",
     seconds: 6,
     targetScale: 1,
-    guidance: "Breathe out softly through your mouth.",
+    guidanceKey: "breathing.exhaleGuidance",
   },
 ];
 
@@ -355,35 +367,36 @@ function buildPregnancyProbabilityDetail(
   cycleLength: number,
   periodLength: number,
   goals: GoalOption[],
+  t: (key: string, opts?: Record<string, unknown>) => string,
 ): PregnancyProbabilityDetail {
   const timing = getCycleTimingForDate(targetDate, lastPeriodStart, cycleLength);
   const category = getDayCategory(targetDate, lastPeriodStart, cycleLength, periodLength);
-  const isTryingToConceive = goals.includes("Trying To Conceive");
+  const isTryingToConceive = goals.includes("trying_to_conceive");
 
   let level: PregnancyProbabilityDetail["level"] = "Low";
   let chanceRangeLabel = "5-10%";
-  let summary = "Outside your fertile window, conception probability is usually lower.";
-  let recommendation = "Use this day for hydration, symptom logging, and cycle planning.";
+  let summary = t("pregnancy.summaryDefault");
+  let recommendation = t("pregnancy.recommendDefault");
 
   if (category === "period") {
     level = "Low";
     chanceRangeLabel = "1-5%";
-    summary = "During period days, pregnancy probability is generally very low.";
-    recommendation = "Focus on comfort care and track flow to improve prediction accuracy.";
+    summary = t("pregnancy.summaryPeriod");
+    recommendation = t("pregnancy.recommendPeriod");
   } else if (Math.abs(timing.daysFromOvulation) <= 1) {
     level = "High";
     chanceRangeLabel = "30-40%";
-    summary = "This day is very close to ovulation, so probability is highest.";
+    summary = t("pregnancy.summaryHigh");
     recommendation = isTryingToConceive
-      ? "If trying to conceive, this is one of your best timing days."
-      : "Use protection if you want to avoid pregnancy today.";
+      ? t("pregnancy.recommendHighConceive")
+      : t("pregnancy.recommendHighAvoid");
   } else if (timing.daysFromOvulation >= -5 && timing.daysFromOvulation <= 2) {
     level = "Medium";
     chanceRangeLabel = "12-25%";
-    summary = "You are within the fertile window, with moderate pregnancy probability.";
+    summary = t("pregnancy.summaryMedium");
     recommendation = isTryingToConceive
-      ? "Plan intercourse around this window and keep lifestyle habits consistent."
-      : "Consider backup protection during fertile-window days.";
+      ? t("pregnancy.recommendMediumConceive")
+      : t("pregnancy.recommendMediumAvoid");
   }
 
   return {
@@ -403,6 +416,8 @@ function buildMonthlyInsight(
   lastPeriodStart: Date,
   cycleLength: number,
   periodLength: number,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  dateLocale: string,
 ): MonthlyInsight {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -437,11 +452,11 @@ function buildMonthlyInsight(
     }
   }
 
-  const monthLabel = monthDate.toLocaleDateString("en-US", { month: "long" });
+  const monthLabel = monthDate.toLocaleDateString(dateLocale, { month: "long" });
   const periodRangeLabel =
     firstPeriodDay !== null && lastPeriodDay !== null
       ? `${monthLabel} ${firstPeriodDay}-${lastPeriodDay}`
-      : "No predicted period days";
+      : t("insights.noPredictedPeriodDays");
 
   const predictedSymptomScore = Math.max(
     3,
@@ -466,50 +481,57 @@ function buildAiAssistantReply(
   cycleLength: number,
   periodLength: number,
   goals: GoalOption[],
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  dateLocale: string,
 ): string {
   const prompt = question.toLowerCase();
-  const nextPeriodDate = context.nextPeriodStart.toLocaleDateString("en-US", {
+  const nextPeriodDate = context.nextPeriodStart.toLocaleDateString(dateLocale, {
     month: "short",
     day: "numeric",
   });
-  const ovulationDate = context.nextOvulationDate.toLocaleDateString("en-US", {
+  const ovulationDate = context.nextOvulationDate.toLocaleDateString(dateLocale, {
     month: "short",
     day: "numeric",
   });
-  const fertilityWindow = `${context.fertilityStartDate.toLocaleDateString("en-US", {
+  const fertilityWindow = `${context.fertilityStartDate.toLocaleDateString(dateLocale, {
     month: "short",
     day: "numeric",
-  })} - ${context.fertilityEndDate.toLocaleDateString("en-US", {
+  })} - ${context.fertilityEndDate.toLocaleDateString(dateLocale, {
     month: "short",
     day: "numeric",
   })}`;
 
   if (prompt.includes("ovulation")) {
-    return `Your next predicted ovulation is on ${ovulationDate}. The fertile window is ${fertilityWindow}. Try symptom logging each morning for better timing.`;
+    return t("ai.replyOvulation", { ovulationDate, fertilityWindow });
   }
 
   if (prompt.includes("fertility") || prompt.includes("conceive")) {
-    return `Your predicted fertility window is ${fertilityWindow}. For trying to conceive, focus on sleep, hydration, and symptom notes during this phase.`;
+    return t("ai.replyFertility", { fertilityWindow });
   }
 
   if (prompt.includes("period") || prompt.includes("late")) {
-    return `Based on your ${cycleLength}-day cycle, your next period is expected around ${nextPeriodDate} (${context.daysUntilNextPeriod} days left). If your pattern changes for 2-3 cycles, update your cycle length in profile.`;
+    return t("ai.replyPeriod", { cycleLength, nextPeriodDate, daysLeft: context.daysUntilNextPeriod });
   }
 
   if (prompt.includes("cramp") || prompt.includes("pain") || prompt.includes("tea")) {
-    return "For cramp days: warm ginger tea, gentle stretching, magnesium-rich foods, and hydration can help. If pain is severe or disruptive, reach out to a clinician.";
+    return t("ai.replyCramp");
   }
 
   if (prompt.includes("mood") || prompt.includes("stress") || prompt.includes("anxious")) {
-    return "Try the breathing exercise in Tips for 4 rounds, then do a 10-minute walk. Mood shifts are common around cycle changes; sleep and hydration make a big difference.";
+    return t("ai.replyMood");
   }
 
   if (prompt.includes("summary") || prompt.includes("plan")) {
-    const goalLine = goals.length > 0 ? goals.join(", ") : "general cycle tracking";
-    return `Quick plan: cycle length ${cycleLength} days, period length ${periodLength} days, next period ${nextPeriodDate}, ovulation ${ovulationDate}, fertility window ${fertilityWindow}. Your selected goals: ${goalLine}.`;
+    const goalLine = goals.length > 0
+      ? goals.map((g) => {
+          const found = GOAL_OPTIONS.find((o) => o.id === g);
+          return found ? t(found.labelKey) : g;
+        }).join(", ")
+      : t("ai.generalCycleTracking");
+    return t("ai.replySummary", { cycleLength, periodLength, nextPeriodDate, ovulationDate, fertilityWindow, goals: goalLine });
   }
 
-  return `Here is your current cycle snapshot: next period ${nextPeriodDate}, ovulation ${ovulationDate}, fertility window ${fertilityWindow}. Ask me about period timing, symptoms, food tips, or fertility guidance.`;
+  return t("ai.replyDefault", { nextPeriodDate, ovulationDate, fertilityWindow });
 }
 
 function DecorativeBackground() {
@@ -594,6 +616,9 @@ function NumberAdjuster({ label, hint, value, min, max, onChange }: NumberAdjust
 }
 
 export default function Index() {
+  const { t, i18n } = useTranslation();
+  const dateLocale = getDateLocale(i18n.language as SupportedLanguage);
+
   const [step, setStep] = useState(0);
   const [stepDirection, setStepDirection] = useState<1 | -1>(1);
   const [isOnboardingDone, setIsOnboardingDone] = useState(false);
@@ -608,7 +633,7 @@ export default function Index() {
   const [onboardingMonth, setOnboardingMonth] = useState(startOfMonth(new Date()));
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
   const [profileView, setProfileView] = useState<ProfileView>("main");
-  const [selectedFlow, setSelectedFlow] = useState<MenstrualFlowOption["label"]>("Medium");
+  const [selectedFlow, setSelectedFlow] = useState("medium");
   const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
   const [breathingPhase, setBreathingPhase] = useState<BreathPhase>("ready");
   const [breathingSecondsLeft, setBreathingSecondsLeft] = useState(0);
@@ -623,9 +648,10 @@ export default function Index() {
     {
       id: "assistant-welcome",
       role: "assistant",
-      text: "Hi! I am your cycle AI assistant. Ask me about your next period, ovulation, fertility window, or symptom care.",
+      text: "",
     },
   ]);
+  const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
 
   const monthOptions = useMemo(() => {
     const base = startOfMonth(new Date());
@@ -817,11 +843,11 @@ export default function Index() {
   const onboardingDays = useMemo(() => buildCalendarDays(onboardingMonth), [onboardingMonth]);
   const onboardingMonthTitle = useMemo(
     () =>
-      onboardingMonth.toLocaleDateString("en-US", {
+      onboardingMonth.toLocaleDateString(dateLocale, {
         month: "long",
         year: "numeric",
       }),
-    [onboardingMonth],
+    [onboardingMonth, dateLocale],
   );
 
   const cycleContext = useMemo(
@@ -840,21 +866,21 @@ export default function Index() {
 
   const monthLabel = useMemo(
     () =>
-      activeMonth.toLocaleDateString("en-US", {
+      activeMonth.toLocaleDateString(dateLocale, {
         month: "long",
         year: "numeric",
       }),
-    [activeMonth],
+    [activeMonth, dateLocale],
   );
 
   const activeInsightsMonth = monthOptions[selectedInsightsMonthIndex] ?? monthOptions[2];
   const insightsMonthLabel = useMemo(
     () =>
-      activeInsightsMonth.toLocaleDateString("en-US", {
+      activeInsightsMonth.toLocaleDateString(dateLocale, {
         month: "long",
         year: "numeric",
       }),
-    [activeInsightsMonth],
+    [activeInsightsMonth, dateLocale],
   );
 
   const decoratedInsightsDays = useMemo<DecoratedCalendarDay[]>(() => {
@@ -872,9 +898,9 @@ export default function Index() {
 
   const monthlyInsights = useMemo(() => {
     return recentInsightMonths.map((monthDate) =>
-      buildMonthlyInsight(monthDate, lastPeriodDate, cycleLength, periodLength),
+      buildMonthlyInsight(monthDate, lastPeriodDate, cycleLength, periodLength, t, dateLocale),
     );
-  }, [recentInsightMonths, lastPeriodDate, cycleLength, periodLength]);
+  }, [recentInsightMonths, lastPeriodDate, cycleLength, periodLength, t, dateLocale]);
 
   const currentMonthInsight = monthlyInsights[monthlyInsights.length - 1];
 
@@ -882,12 +908,12 @@ export default function Index() {
     return monthlyInsights.map((insight) => {
       const trendValue = Math.max(20, Math.min(95, insight.periodDays * 6 + insight.fertilityDays * 4));
       return {
-        label: insight.monthDate.toLocaleDateString("en-US", { month: "short" }),
+        label: insight.monthDate.toLocaleDateString(dateLocale, { month: "short" }),
         value: trendValue,
-        display: `${insight.periodDays + insight.fertilityDays} active days`,
+        display: t("insights.activeDays", { count: insight.periodDays + insight.fertilityDays }),
       };
     });
-  }, [monthlyInsights]);
+  }, [monthlyInsights, dateLocale, t]);
 
   const averageSymptomScore = useMemo(() => {
     const scores = monthlyInsights.map((insight) => insight.predictedSymptomScore);
@@ -903,8 +929,9 @@ export default function Index() {
         cycleLength,
         periodLength,
         goals,
+        t,
       ),
-    [selectedCalendarDate, lastPeriodDate, cycleLength, periodLength, goals],
+    [selectedCalendarDate, lastPeriodDate, cycleLength, periodLength, goals, t],
   );
 
   const selectedDateLevelStyle =
@@ -924,7 +951,7 @@ export default function Index() {
           : true;
 
   const stepButtonLabel =
-    step === 0 ? "get started" : step === 4 ? "Finish onboarding" : "Continue";
+    step === 0 ? t("onboarding.getStarted") : step === 4 ? t("onboarding.finishOnboarding") : t("onboarding.continue");
 
   const insightCards: {
     heroValue: string;
@@ -937,12 +964,12 @@ export default function Index() {
   }[] = [
     {
       heroValue: cycleContext.isPeriodDay
-        ? `Day ${cycleContext.periodDayNumber}`
+        ? t("home.periodDay", { day: cycleContext.periodDayNumber })
         : `${cycleContext.daysUntilNextPeriod}`,
-      heroLabel: cycleContext.isPeriodDay ? "of your period" : "days to period",
+      heroLabel: cycleContext.isPeriodDay ? t("home.ofYourPeriod") : t("home.daysToPeriod"),
       subtitle: cycleContext.isPeriodDay
-        ? "Log symptoms & flow for accuracy"
-        : `Next: ${cycleContext.nextPeriodStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+        ? t("home.logSymptomsFlow")
+        : t("home.nextDate", { date: cycleContext.nextPeriodStart.toLocaleDateString(dateLocale, { month: "short", day: "numeric" }) }),
       icon: "water",
       bgColor: "#FFF0F3",
       accentColor: "#D4587A",
@@ -950,10 +977,10 @@ export default function Index() {
     },
     {
       heroValue: cycleContext.daysUntilOvulation === 0
-        ? "Today"
+        ? t("home.today")
         : `${cycleContext.daysUntilOvulation}`,
-      heroLabel: cycleContext.daysUntilOvulation === 0 ? "is ovulation day" : "days to ovulation",
-      subtitle: `Expected ${cycleContext.nextOvulationDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+      heroLabel: cycleContext.daysUntilOvulation === 0 ? t("home.isOvulationDay") : t("home.daysToOvulation"),
+      subtitle: t("home.expectedDate", { date: cycleContext.nextOvulationDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric" }) }),
       icon: "egg",
       bgColor: "#EEF4FF",
       accentColor: "#5B7FC2",
@@ -963,8 +990,8 @@ export default function Index() {
       heroValue: cycleContext.isFertilityWindow
         ? `${cycleContext.fertilityDaysLeft}`
         : `${Math.max(0, cycleContext.daysUntilFertilityStart)}`,
-      heroLabel: cycleContext.isFertilityWindow ? "fertile days left" : "days to fertile window",
-      subtitle: `${cycleContext.fertilityStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${cycleContext.fertilityEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+      heroLabel: cycleContext.isFertilityWindow ? t("home.fertileDaysLeft") : t("home.daysToFertileWindow"),
+      subtitle: `${cycleContext.fertilityStartDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric" })} - ${cycleContext.fertilityEndDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric" })}`,
       icon: "leaf",
       bgColor: "#EEFBF3",
       accentColor: "#4A9D6E",
@@ -980,26 +1007,26 @@ export default function Index() {
 
   const breathingGuideText =
     breathingPhase === "done"
-      ? "Great job. You finished the breathing exercise."
-      : activeBreathingStep?.guidance ?? "Tap start to begin a guided breathing exercise.";
+      ? t("breathing.doneGuide")
+      : activeBreathingStep?.guidanceKey ? t(activeBreathingStep.guidanceKey) : t("breathing.readyGuide");
 
   const breathingStatusText =
     breathingPhase === "done"
-      ? `Completed ${BREATHING_TOTAL_ROUNDS} rounds`
+      ? t("breathing.completedRounds", { count: BREATHING_TOTAL_ROUNDS })
       : isBreathingRunning
-        ? `${activeBreathingStep?.label ?? "Breathe"} · ${breathingSecondsLeft}s left`
-        : "Ready";
+        ? t("breathing.statusRunning", { label: activeBreathingStep?.labelKey ? t(activeBreathingStep.labelKey) : t("breathing.breathe"), seconds: breathingSecondsLeft })
+        : t("breathing.ready");
 
   const breathingRoundText =
     breathingRound > 0
-      ? `Round ${breathingRound}/${BREATHING_TOTAL_ROUNDS}`
-      : `Round 0/${BREATHING_TOTAL_ROUNDS}`;
+      ? t("breathing.roundProgress", { current: breathingRound, total: BREATHING_TOTAL_ROUNDS })
+      : t("breathing.roundZero", { total: BREATHING_TOTAL_ROUNDS });
 
   const aiQuickPrompts = [
-    "Give me my cycle summary",
-    "When is my next ovulation?",
-    "How can I reduce period cramps?",
-    "Best habits before fertility window",
+    t("ai.prompt1"),
+    t("ai.prompt2"),
+    t("ai.prompt3"),
+    t("ai.prompt4"),
   ];
 
   const onboardingAnimatedStyle = {
@@ -1041,12 +1068,12 @@ export default function Index() {
     goToStep(step - 1, -1);
   };
 
-  const toggleGoal = (goal: GoalOption) => {
+  const toggleGoal = (goalId: GoalOption) => {
     setGoals((currentGoals) => {
-      if (currentGoals.includes(goal)) {
-        return currentGoals.filter((currentGoal) => currentGoal !== goal);
+      if (currentGoals.includes(goalId)) {
+        return currentGoals.filter((currentGoal) => currentGoal !== goalId);
       }
-      return [...currentGoals, goal];
+      return [...currentGoals, goalId];
     });
   };
 
@@ -1057,6 +1084,13 @@ export default function Index() {
       }
       return [...currentMoods, mood];
     });
+  };
+
+  const handlePeriodStartsToday = () => {
+    const today = startOfDay(new Date());
+    setLastPeriodDate(today);
+    setSelectedCalendarDate(today);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   const sendAiMessage = (messageText: string) => {
@@ -1086,6 +1120,8 @@ export default function Index() {
         cycleLength,
         periodLength,
         goals,
+        t,
+        dateLocale,
       );
 
       const assistantMessage: AiMessage = {
@@ -1138,8 +1174,8 @@ export default function Index() {
         <View style={styles.welcomeStage}>
           <WelcomeIllustration />
           <View style={styles.welcomeTextBlock}>
-            <Text style={styles.welcomeTitle}>Welcome to My cycle calendar</Text>
-            <Text style={styles.welcomeSubtitle}>You&apos;re ready to track your journey.</Text>
+            <Text style={styles.welcomeTitle}>{t("onboarding.welcomeTitle")}</Text>
+            <Text style={styles.welcomeSubtitle}>{t("onboarding.welcomeSubtitle")}</Text>
           </View>
         </View>
       );
@@ -1148,13 +1184,13 @@ export default function Index() {
     if (step === 1) {
       return (
         <View style={styles.contentBlock}>
-          <Text style={styles.title}>What should we call you?</Text>
-          <Text style={styles.descriptionLeft}>Your name helps us make the experience personal.</Text>
+          <Text style={styles.title}>{t("onboarding.nameTitle")}</Text>
+          <Text style={styles.descriptionLeft}>{t("onboarding.nameDescription")}</Text>
           <TextInput
             style={styles.input}
             value={name}
             onChangeText={setName}
-            placeholder="Enter your name"
+            placeholder={t("onboarding.namePlaceholder")}
             placeholderTextColor="#9F95A4"
           />
         </View>
@@ -1164,19 +1200,19 @@ export default function Index() {
     if (step === 2) {
       return (
         <View style={styles.contentBlock}>
-          <Text style={styles.title}>What is your goal?</Text>
-          <Text style={styles.descriptionLeft}>Choose what fits your journey best.</Text>
-          <Text style={styles.descriptionMuted}>Select all that apply.</Text>
+          <Text style={styles.title}>{t("onboarding.goalsTitle")}</Text>
+          <Text style={styles.descriptionLeft}>{t("onboarding.goalsDescription")}</Text>
+          <Text style={styles.descriptionMuted}>{t("onboarding.goalsSelectAll")}</Text>
           <View style={styles.optionList}>
             {GOAL_OPTIONS.map((goalOption) => {
-              const isSelected = goals.includes(goalOption);
+              const isSelected = goals.includes(goalOption.id);
 
               return (
                 <Pressable
-                  key={goalOption}
+                  key={goalOption.id}
                   style={[styles.optionButton, isSelected && styles.optionButtonActive]}
-                  onPress={() => toggleGoal(goalOption)}>
-                  <Text style={[styles.optionText, isSelected && styles.optionTextActive]}>{goalOption}</Text>
+                  onPress={() => toggleGoal(goalOption.id)}>
+                  <Text style={[styles.optionText, isSelected && styles.optionTextActive]}>{t(goalOption.labelKey)}</Text>
                   <View style={[styles.optionIndicator, isSelected && styles.optionIndicatorActive]}>
                     {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
                   </View>
@@ -1191,8 +1227,8 @@ export default function Index() {
     if (step === 3) {
       return (
         <View style={styles.contentBlock}>
-          <Text style={styles.title}>Confirm your last period date</Text>
-          <Text style={styles.descriptionLeft}>Tap a date in the calendar below.</Text>
+          <Text style={styles.title}>{t("onboarding.periodDateTitle")}</Text>
+          <Text style={styles.descriptionLeft}>{t("onboarding.periodDateDescription")}</Text>
 
           <View style={styles.monthHeader}>
             <TouchableOpacity
@@ -1209,9 +1245,9 @@ export default function Index() {
           </View>
 
           <View style={styles.weekHeader}>
-            {WEEK_DAYS.map((day, index) => (
-              <Text key={`${day}-${index}`} style={styles.weekDayText}>
-                {day}
+            {WEEK_DAY_KEYS.map((dayKey, index) => (
+              <Text key={`${dayKey}-${index}`} style={styles.weekDayText}>
+                {t(dayKey)}
               </Text>
             ))}
           </View>
@@ -1242,7 +1278,7 @@ export default function Index() {
           </View>
 
           <Text style={styles.confirmedDateText}>
-            Last period date: {lastPeriodDate.toLocaleDateString("en-US")}
+            {t("onboarding.lastPeriodDate", { date: lastPeriodDate.toLocaleDateString(dateLocale) })}
           </Text>
         </View>
       );
@@ -1250,12 +1286,12 @@ export default function Index() {
 
     return (
       <View style={styles.contentBlock}>
-        <Text style={styles.title}>Lets create perfect experience for you.</Text>
-        <Text style={styles.descriptionLeft}>Add your cycle details for accurate predictions and reminders.</Text>
+        <Text style={styles.title}>{t("onboarding.cycleDetailsTitle")}</Text>
+        <Text style={styles.descriptionLeft}>{t("onboarding.cycleDetailsDescription")}</Text>
 
         <NumberAdjuster
-          label="Cycle length"
-          hint="Average number of days between periods"
+          label={t("common.cycleLengthLabel")}
+          hint={t("common.cycleLengthHint")}
           value={cycleLength}
           min={21}
           max={40}
@@ -1263,8 +1299,8 @@ export default function Index() {
         />
 
         <NumberAdjuster
-          label="Period length"
-          hint="How many days your period usually lasts"
+          label={t("common.periodLengthLabel")}
+          hint={t("common.periodLengthHint")}
           value={periodLength}
           min={3}
           max={10}
@@ -1273,8 +1309,8 @@ export default function Index() {
 
         <View style={styles.reminderRow}>
           <View>
-            <Text style={styles.adjusterLabel}>Reminder alerts</Text>
-            <Text style={styles.adjusterHint}>Period, fertility, and ovulation reminders</Text>
+            <Text style={styles.adjusterLabel}>{t("common.reminderAlerts")}</Text>
+            <Text style={styles.adjusterHint}>{t("common.reminderAlertsHint")}</Text>
           </View>
           <Switch
             value={remindersEnabled}
@@ -1288,22 +1324,28 @@ export default function Index() {
   };
 
   const renderPregnancyProbabilityCard = () => {
-    const selectedDateLabel = selectedCalendarDate.toLocaleDateString("en-US", {
+    const selectedDateLabel = selectedCalendarDate.toLocaleDateString(dateLocale, {
       weekday: "short",
       month: "short",
       day: "numeric",
     });
 
+    const levelLabel = selectedDatePregnancyDetail.level === "High"
+      ? t("pregnancy.high")
+      : selectedDatePregnancyDetail.level === "Medium"
+        ? t("pregnancy.medium")
+        : t("pregnancy.low");
+
     return (
       <View style={styles.probabilityCard}>
         <View style={styles.probabilityHeaderRow}>
           <View>
-            <Text style={styles.probabilityTitle}>Pregnancy Probability</Text>
+            <Text style={styles.probabilityTitle}>{t("pregnancy.title")}</Text>
             <Text style={styles.probabilityDateLabel}>{selectedDateLabel}</Text>
           </View>
           <View style={[styles.probabilityBadge, selectedDateLevelStyle]}>
             <Text style={styles.probabilityBadgeText}>
-              {selectedDatePregnancyDetail.level} ({selectedDatePregnancyDetail.chanceRangeLabel})
+              {levelLabel} ({selectedDatePregnancyDetail.chanceRangeLabel})
             </Text>
           </View>
         </View>
@@ -1311,22 +1353,25 @@ export default function Index() {
         <Text style={styles.probabilitySummary}>{selectedDatePregnancyDetail.summary}</Text>
 
         <View style={styles.probabilityMetaRow}>
-          <Text style={styles.probabilityMetaText}>Cycle day {selectedDatePregnancyDetail.cycleDayNumber}</Text>
+          <Text style={styles.probabilityMetaText}>{t("pregnancy.cycleDay", { day: selectedDatePregnancyDetail.cycleDayNumber })}</Text>
           <Text style={styles.probabilityMetaText}>
-            Ovulation {selectedDatePregnancyDetail.ovulationDate.toLocaleDateString("en-US", {
+            {t("pregnancy.ovulationLabel", { date: selectedDatePregnancyDetail.ovulationDate.toLocaleDateString(dateLocale, {
               month: "short",
               day: "numeric",
-            })}
+            }) })}
           </Text>
         </View>
 
         <Text style={styles.probabilityWindowText}>
-          Fertility window: {selectedDatePregnancyDetail.fertilityStartDate.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          })} - {selectedDatePregnancyDetail.fertilityEndDate.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
+          {t("pregnancy.fertilityWindow", {
+            start: selectedDatePregnancyDetail.fertilityStartDate.toLocaleDateString(dateLocale, {
+              month: "short",
+              day: "numeric",
+            }),
+            end: selectedDatePregnancyDetail.fertilityEndDate.toLocaleDateString(dateLocale, {
+              month: "short",
+              day: "numeric",
+            }),
           })}
         </Text>
 
@@ -1340,9 +1385,9 @@ export default function Index() {
       <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.homeHeader}>
           <View>
-            <Text style={styles.headerTitle}>My cycle calendar</Text>
+            <Text style={styles.headerTitle}>{t("home.myCycleCalendar")}</Text>
             <Text style={styles.headerSubtitle}>
-              {new Date().toLocaleDateString("en-US", {
+              {new Date().toLocaleDateString(dateLocale, {
                 weekday: "long",
                 month: "short",
                 day: "numeric",
@@ -1383,7 +1428,7 @@ export default function Index() {
                 style={[styles.monthChip, isSelected && styles.monthChipActive]}
                 onPress={() => setSelectedMonthIndex(index)}>
                 <Text style={[styles.monthChipText, isSelected && styles.monthChipTextActive]}>
-                  {monthOption.toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                  {monthOption.toLocaleDateString(dateLocale, { month: "short", year: "2-digit" })}
                 </Text>
               </TouchableOpacity>
             );
@@ -1394,9 +1439,9 @@ export default function Index() {
           <Text style={styles.calendarCardTitle}>{monthLabel}</Text>
 
           <View style={styles.weekHeader}>
-            {WEEK_DAYS.map((day, index) => (
-              <Text key={`${day}-home-${index}`} style={styles.weekDayText}>
-                {day}
+            {WEEK_DAY_KEYS.map((dayKey, index) => (
+              <Text key={`${dayKey}-home-${index}`} style={styles.weekDayText}>
+                {t(dayKey)}
               </Text>
             ))}
           </View>
@@ -1440,19 +1485,25 @@ export default function Index() {
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: "#D8C3F9" }]} />
-              <Text style={styles.legendText}>Period</Text>
+              <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: "#BFDDFE" }]} />
-              <Text style={styles.legendText}>Ovulation</Text>
+              <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: "#CDEFD9" }]} />
-              <Text style={styles.legendText}>Fertility</Text>
+              <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
             </View>
           </View>
 
-          <Text style={styles.calendarHintText}>Tap any day to view pregnancy chance details.</Text>
+          <Text style={styles.calendarHintText}>{t("home.calendarHint")}</Text>
+
+          <TouchableOpacity style={styles.periodStartButton} onPress={handlePeriodStartsToday}>
+            <MaterialCommunityIcons name="water-plus" size={20} color="#FFFFFF" />
+            <Text style={styles.periodStartButtonText}>{t("home.periodStartsToday")}</Text>
+          </TouchableOpacity>
+
           {renderPregnancyProbabilityCard()}
         </View>
       </ScrollView>
@@ -1464,25 +1515,25 @@ export default function Index() {
 
     return (
       <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>Tips</Text>
+        <Text style={styles.sectionTitle}>{t("tips.sectionTitle")}</Text>
 
         <View style={styles.infoCard}>
           <View style={styles.flowCard}>
-            <Text style={styles.flowCardTitle}>Menstrual Flow</Text>
+            <Text style={styles.flowCardTitle}>{t("tips.menstrualFlow")}</Text>
 
             <View style={styles.flowTabRow}>
               {MENSTRUAL_FLOW_OPTIONS.map((flowOption) => {
-                const isSelected = selectedFlow === flowOption.label;
+                const isSelected = selectedFlow === flowOption.key;
 
                 return (
                   <Pressable
-                    key={flowOption.label}
+                    key={flowOption.key}
                     style={[styles.flowTab, isSelected && styles.flowTabActive]}
-                    onPress={() => setSelectedFlow(flowOption.label)}>
+                    onPress={() => setSelectedFlow(flowOption.key)}>
                     <View style={styles.flowDropRow}>
                       {Array.from({ length: flowOption.drops }).map((_, index) => (
                         <MaterialCommunityIcons
-                          key={`${flowOption.label}-${index}`}
+                          key={`${flowOption.key}-${index}`}
                           name="water"
                           size={16}
                           color={isSelected ? "#FFFFFF" : "#8F72C5"}
@@ -1490,7 +1541,7 @@ export default function Index() {
                       ))}
                     </View>
                     <Text style={[styles.flowLabel, isSelected && styles.flowLabelActive]}>
-                      {flowOption.label}
+                      {t(flowOption.labelKey)}
                     </Text>
                   </Pressable>
                 );
@@ -1498,20 +1549,20 @@ export default function Index() {
             </View>
           </View>
 
-          <Text style={styles.tipsQuestion}>{`${feelingName} how do you feel today`}</Text>
-          <Text style={styles.infoFootnote}>Pick as many moods as match your day.</Text>
+          <Text style={styles.tipsQuestion}>{t("tips.howDoYouFeel", { name: feelingName })}</Text>
+          <Text style={styles.infoFootnote}>{t("tips.pickMoods")}</Text>
 
           <View style={styles.moodGrid}>
             {MOOD_OPTIONS.map((moodOption) => {
-              const isSelected = selectedMoods.includes(moodOption.label);
+              const isSelected = selectedMoods.includes(moodOption.labelKey);
               return (
                 <Pressable
-                  key={moodOption.label}
+                  key={moodOption.labelKey}
                   style={[styles.moodChip, isSelected && styles.moodChipActive]}
-                  onPress={() => toggleMood(moodOption.label)}>
+                  onPress={() => toggleMood(moodOption.labelKey)}>
                   <Text style={styles.moodEmoji}>{moodOption.emoji}</Text>
                   <Text style={[styles.moodLabel, isSelected && styles.moodLabelActive]}>
-                    {moodOption.label}
+                    {t(moodOption.labelKey)}
                   </Text>
                 </Pressable>
               );
@@ -1520,22 +1571,22 @@ export default function Index() {
         </View>
 
         <View style={styles.tipsSectionWrap}>
-          <Text style={styles.tipsSectionTitle}>Helpful tips for girls</Text>
+          <Text style={styles.tipsSectionTitle}>{t("tips.helpfulTips")}</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tipsCarouselRow}>
             {GIRL_TIPS.map((tip) => (
-              <View key={tip.title} style={styles.tipCard}>
-                <Text style={styles.tipTitle}>{tip.title}</Text>
-                <Text style={styles.tipDetail}>{tip.detail}</Text>
+              <View key={tip.titleKey} style={styles.tipCard}>
+                <Text style={styles.tipTitle}>{t(tip.titleKey)}</Text>
+                <Text style={styles.tipDetail}>{t(tip.detailKey)}</Text>
               </View>
             ))}
           </ScrollView>
         </View>
 
         <View style={styles.breathingCard}>
-          <Text style={styles.tipsSectionTitle}>Breathing meditation</Text>
+          <Text style={styles.tipsSectionTitle}>{t("breathing.meditationTitle")}</Text>
           <Text style={styles.breathingGuideText}>{breathingGuideText}</Text>
 
           <View style={styles.breathingStatusRow}>
@@ -1554,10 +1605,10 @@ export default function Index() {
             onPress={isBreathingRunning ? () => stopBreathingSession("ready") : startBreathingSession}>
             <Text style={styles.breathingActionButtonText}>
               {isBreathingRunning
-                ? "Stop exercise"
+                ? t("breathing.stopExercise")
                 : breathingPhase === "done"
-                  ? "Start again"
-                  : "Start breathing"}
+                  ? t("breathing.startAgain")
+                  : t("breathing.startBreathing")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1568,8 +1619,8 @@ export default function Index() {
   const renderInsightsTab = () => {
     return (
       <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>Cycle Statistics</Text>
-        <Text style={styles.infoFootnote}>Track your patterns and insights.</Text>
+        <Text style={styles.sectionTitle}>{t("insights.cycleStatistics")}</Text>
+        <Text style={styles.infoFootnote}>{t("insights.trackPatterns")}</Text>
 
         <View style={styles.calendarCard}>
           <Text style={styles.calendarCardTitle}>{insightsMonthLabel}</Text>
@@ -1586,7 +1637,7 @@ export default function Index() {
                   style={[styles.monthChip, isSelected && styles.monthChipActive]}
                   onPress={() => setSelectedInsightsMonthIndex(index)}>
                   <Text style={[styles.monthChipText, isSelected && styles.monthChipTextActive]}>
-                    {monthOption.toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
+                    {monthOption.toLocaleDateString(dateLocale, { month: "short", year: "2-digit" })}
                   </Text>
                 </TouchableOpacity>
               );
@@ -1594,9 +1645,9 @@ export default function Index() {
           </ScrollView>
 
           <View style={styles.weekHeader}>
-            {WEEK_DAYS.map((day, index) => (
-              <Text key={`${day}-insights-${index}`} style={styles.weekDayText}>
-                {day}
+            {WEEK_DAY_KEYS.map((dayKey, index) => (
+              <Text key={`${dayKey}-insights-${index}`} style={styles.weekDayText}>
+                {t(dayKey)}
               </Text>
             ))}
           </View>
@@ -1640,59 +1691,59 @@ export default function Index() {
           <View style={styles.legendRow}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: "#D8C3F9" }]} />
-              <Text style={styles.legendText}>Period</Text>
+              <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: "#BFDDFE" }]} />
-              <Text style={styles.legendText}>Ovulation</Text>
+              <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: "#CDEFD9" }]} />
-              <Text style={styles.legendText}>Fertility</Text>
+              <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
             </View>
           </View>
 
-          <Text style={styles.calendarHintText}>Tap any day to view pregnancy chance details.</Text>
+          <Text style={styles.calendarHintText}>{t("home.calendarHint")}</Text>
           {renderPregnancyProbabilityCard()}
         </View>
 
         <Text style={styles.insightSectionTitle}>
-          {currentMonthInsight?.monthLabel ?? "This month"} statistics
+          {currentMonthInsight?.monthLabel ?? t("insights.thisMonth")} {t("insights.cycleStatistics").toLowerCase()}
         </Text>
 
         <View style={styles.statsGrid}>
           <View style={[styles.statCard, styles.statCardPink]}>
-            <Text style={styles.statTitle}>Cycle Length</Text>
-            <Text style={styles.statValue}>{cycleLength} days</Text>
-            <Text style={styles.statSubtext}>This month</Text>
+            <Text style={styles.statTitle}>{t("insights.cycleLength")}</Text>
+            <Text style={styles.statValue}>{t("insights.days", { count: cycleLength })}</Text>
+            <Text style={styles.statSubtext}>{t("insights.thisMonth")}</Text>
           </View>
 
           <View style={[styles.statCard, styles.statCardLavender]}>
-            <Text style={styles.statTitle}>Period Duration</Text>
-            <Text style={styles.statValue}>{periodLength} days</Text>
-            <Text style={styles.statSubtext}>{currentMonthInsight?.periodRangeLabel ?? "No range"}</Text>
+            <Text style={styles.statTitle}>{t("insights.periodDuration")}</Text>
+            <Text style={styles.statValue}>{t("insights.days", { count: periodLength })}</Text>
+            <Text style={styles.statSubtext}>{currentMonthInsight?.periodRangeLabel ?? t("insights.noPredictedPeriodDays")}</Text>
           </View>
 
           <View style={[styles.statCard, styles.statCardPeach]}>
-            <Text style={styles.statTitle}>Ovulation Day</Text>
+            <Text style={styles.statTitle}>{t("insights.ovulationDay")}</Text>
             <Text style={styles.statValue}>
               {currentMonthInsight?.ovulationDayOfMonth
-                ? `Day ${currentMonthInsight.ovulationDayOfMonth}`
-                : "Not in month"}
+                ? t("insights.dayLabel", { day: currentMonthInsight.ovulationDayOfMonth })
+                : t("insights.notInMonth")}
             </Text>
-            <Text style={styles.statSubtext}>{currentMonthInsight?.monthLabel ?? "Current month"}</Text>
+            <Text style={styles.statSubtext}>{currentMonthInsight?.monthLabel ?? t("insights.thisMonth")}</Text>
           </View>
 
           <View style={[styles.statCard, styles.statCardMint]}>
-            <Text style={styles.statTitle}>Avg Symptoms</Text>
+            <Text style={styles.statTitle}>{t("insights.avgSymptoms")}</Text>
             <Text style={styles.statValue}>{averageSymptomScore}</Text>
-            <Text style={styles.statSubtext}>Predicted monthly score</Text>
+            <Text style={styles.statSubtext}>{t("insights.predictedMonthlyScore")}</Text>
           </View>
         </View>
 
         <View style={styles.overviewCard}>
-          <Text style={styles.overviewTitle}>{new Date().getFullYear()} Cycle Overview</Text>
-          <Text style={styles.infoFootnote}>History of period, ovulation, and fertility-window days.</Text>
+          <Text style={styles.overviewTitle}>{t("insights.cycleOverview", { year: new Date().getFullYear() })}</Text>
+          <Text style={styles.infoFootnote}>{t("insights.overviewFootnote")}</Text>
 
           <View style={styles.historyList}>
             {monthlyInsights
@@ -1701,7 +1752,7 @@ export default function Index() {
               .map((insight) => (
                 <View key={`history-${insight.monthDate.toISOString()}`} style={styles.historyRow}>
                   <Text style={styles.historyMonthLabel}>
-                    {insight.monthDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                    {insight.monthDate.toLocaleDateString(dateLocale, { month: "short", year: "numeric" })}
                   </Text>
                   <Text style={styles.historyRowText}>P: {insight.periodDays}</Text>
                   <Text style={styles.historyRowText}>O: {insight.ovulationDays}</Text>
@@ -1735,12 +1786,12 @@ export default function Index() {
           end={{ x: 1, y: 1 }}
           style={styles.aiHeroCard}>
           <View>
-            <Text style={styles.aiHeroTitle}>AI Cycle Assistant</Text>
-            <Text style={styles.aiHeroSubtitle}>Personalized support for timing, symptoms, and daily guidance.</Text>
+            <Text style={styles.aiHeroTitle}>{t("ai.heroTitle")}</Text>
+            <Text style={styles.aiHeroSubtitle}>{t("ai.heroSubtitle")}</Text>
           </View>
           <View style={styles.aiStatusChip}>
             <MaterialCommunityIcons name="brain" size={15} color="#5D4193" />
-            <Text style={styles.aiStatusChipText}>OpenRouter-ready</Text>
+            <Text style={styles.aiStatusChipText}>{t("ai.statusChip")}</Text>
           </View>
         </LinearGradient>
 
@@ -1772,14 +1823,14 @@ export default function Index() {
                   styles.aiBubbleText,
                   message.role === "assistant" ? styles.aiAssistantBubbleText : styles.aiUserBubbleText,
                 ]}>
-                {message.text}
+                {message.id === "assistant-welcome" ? t("ai.welcomeMessage") : message.text}
               </Text>
             </View>
           ))}
 
           {isAiTyping && (
             <View style={[styles.aiBubble, styles.aiAssistantBubble, styles.aiTypingBubble]}>
-              <Text style={styles.aiAssistantBubbleText}>Thinking...</Text>
+              <Text style={styles.aiAssistantBubbleText}>{t("ai.thinking")}</Text>
             </View>
           )}
         </ScrollView>
@@ -1788,7 +1839,7 @@ export default function Index() {
           <TextInput
             value={aiInput}
             onChangeText={setAiInput}
-            placeholder="Ask anything about your cycle"
+            placeholder={t("ai.placeholder")}
             placeholderTextColor="#9A8BA0"
             style={styles.aiInput}
             returnKeyType="send"
@@ -1808,7 +1859,12 @@ export default function Index() {
 
   const renderProfileTab = () => {
     const profileName = name.trim() || "Gul";
-    const profileGoals = goals.length > 0 ? goals.join(", ") : "Cycle Tracking";
+    const profileGoals = goals.length > 0
+      ? goals.map((g) => {
+          const found = GOAL_OPTIONS.find((o) => o.id === g);
+          return found ? t(found.labelKey) : g;
+        }).join(", ")
+      : t("goals.cycleTracking");
 
     if (profileView === "settings") {
       return (
@@ -1817,17 +1873,17 @@ export default function Index() {
             <TouchableOpacity style={styles.settingsBackButton} onPress={() => setProfileView("main")}>
               <Ionicons name="chevron-back" size={20} color="#4B3E53" />
             </TouchableOpacity>
-            <Text style={styles.settingsHeaderTitle}>Settings</Text>
+            <Text style={styles.settingsHeaderTitle}>{t("settings.title")}</Text>
             <View style={styles.settingsHeaderSpacer} />
           </View>
 
           <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>Notifications</Text>
+            <Text style={styles.settingsSectionTitle}>{t("settings.notifications")}</Text>
 
             <View style={styles.settingsSwitchRow}>
               <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>Cycle reminders</Text>
-                <Text style={styles.settingsRowSubtitle}>Period, ovulation, fertility notifications</Text>
+                <Text style={styles.settingsRowTitle}>{t("settings.cycleReminders")}</Text>
+                <Text style={styles.settingsRowSubtitle}>{t("settings.cycleRemindersDesc")}</Text>
               </View>
               <Switch
                 value={remindersEnabled}
@@ -1839,8 +1895,8 @@ export default function Index() {
 
             <View style={styles.settingsSwitchRow}>
               <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>Insight nudges</Text>
-                <Text style={styles.settingsRowSubtitle}>Daily tips and mood check-in prompts</Text>
+                <Text style={styles.settingsRowTitle}>{t("settings.insightNudges")}</Text>
+                <Text style={styles.settingsRowSubtitle}>{t("settings.insightNudgesDesc")}</Text>
               </View>
               <Switch
                 value={insightNudgesEnabled}
@@ -1852,12 +1908,12 @@ export default function Index() {
           </View>
 
           <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>Privacy & Security</Text>
+            <Text style={styles.settingsSectionTitle}>{t("settings.privacySecurity")}</Text>
 
             <View style={styles.settingsSwitchRow}>
               <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>App passcode lock</Text>
-                <Text style={styles.settingsRowSubtitle}>Protect private cycle information</Text>
+                <Text style={styles.settingsRowTitle}>{t("settings.appPasscodeLock")}</Text>
+                <Text style={styles.settingsRowSubtitle}>{t("settings.appPasscodeLockDesc")}</Text>
               </View>
               <Switch
                 value={pinLockEnabled}
@@ -1869,12 +1925,12 @@ export default function Index() {
           </View>
 
           <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>Integrations</Text>
+            <Text style={styles.settingsSectionTitle}>{t("settings.integrations")}</Text>
 
             <View style={styles.settingsSwitchRow}>
               <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>Health sync</Text>
-                <Text style={styles.settingsRowSubtitle}>Sync cycle data with health apps</Text>
+                <Text style={styles.settingsRowTitle}>{t("settings.healthSync")}</Text>
+                <Text style={styles.settingsRowSubtitle}>{t("settings.healthSyncDesc")}</Text>
               </View>
               <Switch
                 value={healthSyncEnabled}
@@ -1886,26 +1942,63 @@ export default function Index() {
           </View>
 
           <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>General</Text>
+            <Text style={styles.settingsSectionTitle}>{t("settings.general")}</Text>
 
-            <TouchableOpacity style={styles.settingsNavRow}>
-              <Text style={styles.settingsRowTitle}>Language</Text>
+            <TouchableOpacity style={styles.settingsNavRow} onPress={() => setLanguagePickerVisible(true)}>
+              <Text style={styles.settingsRowTitle}>{t("settings.language")}</Text>
               <View style={styles.settingsNavRight}>
-                <Text style={styles.settingsNavValue}>English</Text>
+                <Text style={styles.settingsNavValue}>{SUPPORTED_LANGUAGES[i18n.language] ?? "English"}</Text>
                 <Ionicons name="chevron-forward" size={16} color="#85788A" />
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.settingsNavRow}>
-              <Text style={styles.settingsRowTitle}>Export cycle data</Text>
+              <Text style={styles.settingsRowTitle}>{t("settings.exportCycleData")}</Text>
               <Ionicons name="chevron-forward" size={16} color="#85788A" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.settingsNavRow}>
-              <Text style={styles.settingsRowTitle}>Help & support</Text>
+              <Text style={styles.settingsRowTitle}>{t("settings.helpSupport")}</Text>
               <Ionicons name="chevron-forward" size={16} color="#85788A" />
             </TouchableOpacity>
           </View>
+
+          <Modal
+            visible={languagePickerVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setLanguagePickerVisible(false)}>
+            <Pressable style={styles.languageModalOverlay} onPress={() => setLanguagePickerVisible(false)}>
+              <View style={styles.languageModalContent}>
+                <Text style={styles.languageModalTitle}>{t("languagePicker.title")}</Text>
+                {Object.entries(SUPPORTED_LANGUAGES).map(([code, label]) => (
+                  <TouchableOpacity
+                    key={code}
+                    style={styles.languageOptionRow}
+                    onPress={() => {
+                      i18n.changeLanguage(code);
+                      persistLanguage(code as SupportedLanguage);
+                      setLanguagePickerVisible(false);
+                    }}>
+                    <Text style={[
+                      styles.languageOptionText,
+                      i18n.language === code && styles.languageOptionTextActive,
+                    ]}>
+                      {label}
+                    </Text>
+                    {i18n.language === code && (
+                      <Ionicons name="checkmark" size={18} color="#8F72C5" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={styles.languageCancelButton}
+                  onPress={() => setLanguagePickerVisible(false)}>
+                  <Text style={styles.languageCancelText}>{t("languagePicker.cancel")}</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Modal>
         </ScrollView>
       );
     }
@@ -1929,71 +2022,71 @@ export default function Index() {
         </View>
 
         <View style={styles.profileHeroCard}>
-          <Text style={styles.profileHeroTitle}>Your cycle profile is up to date</Text>
+          <Text style={styles.profileHeroTitle}>{t("profile.heroTitle")}</Text>
           <Text style={styles.profileHeroSubtitle}>
-            Keep your settings accurate to improve predictions and insights.
+            {t("profile.heroSubtitle")}
           </Text>
         </View>
 
         <View style={styles.profileStatsGrid}>
           <View style={[styles.profileStatCard, styles.profileStatCardLavender]}>
-            <Text style={styles.profileStatTitle}>Cycle length</Text>
-            <Text style={styles.profileStatValue}>{cycleLength} days</Text>
+            <Text style={styles.profileStatTitle}>{t("profile.cycleLength")}</Text>
+            <Text style={styles.profileStatValue}>{t("profile.days", { count: cycleLength })}</Text>
           </View>
 
           <View style={[styles.profileStatCard, styles.profileStatCardPink]}>
-            <Text style={styles.profileStatTitle}>Period length</Text>
-            <Text style={styles.profileStatValue}>{periodLength} days</Text>
+            <Text style={styles.profileStatTitle}>{t("profile.periodLength")}</Text>
+            <Text style={styles.profileStatValue}>{t("profile.days", { count: periodLength })}</Text>
           </View>
 
           <View style={[styles.profileStatCard, styles.profileStatCardMint]}>
-            <Text style={styles.profileStatTitle}>Last logged</Text>
-            <Text style={styles.profileStatValueSmall}>{lastPeriodDate.toLocaleDateString("en-US")}</Text>
+            <Text style={styles.profileStatTitle}>{t("profile.lastLogged")}</Text>
+            <Text style={styles.profileStatValueSmall}>{lastPeriodDate.toLocaleDateString(dateLocale)}</Text>
           </View>
 
           <View style={[styles.profileStatCard, styles.profileStatCardPeach]}>
-            <Text style={styles.profileStatTitle}>Next period</Text>
-            <Text style={styles.profileStatValueSmall}>{cycleContext.nextPeriodStart.toLocaleDateString("en-US")}</Text>
+            <Text style={styles.profileStatTitle}>{t("profile.nextPeriod")}</Text>
+            <Text style={styles.profileStatValueSmall}>{cycleContext.nextPeriodStart.toLocaleDateString(dateLocale)}</Text>
           </View>
         </View>
 
         <View style={styles.profileMenuCard}>
           <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("insights")}>
             <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>Cycle insights</Text>
-              <Text style={styles.profileMenuSubtitle}>See monthly trends and history</Text>
+              <Text style={styles.profileMenuTitle}>{t("profile.cycleInsights")}</Text>
+              <Text style={styles.profileMenuSubtitle}>{t("profile.cycleInsightsDesc")}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#877A8A" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("tips")}>
             <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>Tips and wellbeing</Text>
-              <Text style={styles.profileMenuSubtitle}>Mood tracker, breathing, self-care</Text>
+              <Text style={styles.profileMenuTitle}>{t("profile.tipsWellbeing")}</Text>
+              <Text style={styles.profileMenuSubtitle}>{t("profile.tipsWellbeingDesc")}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#877A8A" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("ai")}>
             <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>AI assistant</Text>
-              <Text style={styles.profileMenuSubtitle}>Get personalized cycle guidance</Text>
+              <Text style={styles.profileMenuTitle}>{t("profile.aiAssistant")}</Text>
+              <Text style={styles.profileMenuSubtitle}>{t("profile.aiAssistantDesc")}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#877A8A" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.profileMenuRow} onPress={() => setProfileView("settings")}>
             <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>App settings</Text>
-              <Text style={styles.profileMenuSubtitle}>Notifications, privacy, integrations</Text>
+              <Text style={styles.profileMenuTitle}>{t("profile.appSettings")}</Text>
+              <Text style={styles.profileMenuSubtitle}>{t("profile.appSettingsDesc")}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#877A8A" />
           </TouchableOpacity>
         </View>
 
         <NumberAdjuster
-          label="Cycle length"
-          hint="Update if your cycle pattern changes"
+          label={t("profile.cycleLength")}
+          hint={t("profile.cycleLengthHint")}
           value={cycleLength}
           min={21}
           max={40}
@@ -2001,8 +2094,8 @@ export default function Index() {
         />
 
         <NumberAdjuster
-          label="Period length"
-          hint="Used for period day and prediction accuracy"
+          label={t("profile.periodLength")}
+          hint={t("profile.periodLengthHint")}
           value={periodLength}
           min={3}
           max={10}
@@ -2034,7 +2127,7 @@ export default function Index() {
         <DecorativeBackground />
 
         <View style={styles.onboardingWrapper}>
-          {step > 0 && <Text style={styles.progressText}>Step {step + 1} of 5</Text>}
+          {step > 0 && <Text style={styles.progressText}>{t("onboarding.stepProgress", { current: step + 1, total: 5 })}</Text>}
 
           <Animated.View
             style={[
@@ -2047,7 +2140,7 @@ export default function Index() {
           <View style={[styles.footerButtons, step === 0 && styles.footerButtonsSingle]}>
             {step > 0 && (
               <TouchableOpacity style={styles.secondaryButton} onPress={onBack}>
-                <Text style={styles.secondaryButtonText}>Back</Text>
+                <Text style={styles.secondaryButtonText}>{t("onboarding.back")}</Text>
               </TouchableOpacity>
             )}
 
@@ -2084,7 +2177,7 @@ export default function Index() {
                 <View style={[styles.navIconWrap, isActive && styles.navIconWrapActive]}>
                   <Ionicons name={item.icon} size={19} color={isActive ? "#FFFFFF" : "#6E6074"} />
                 </View>
-                <Text style={[styles.navText, isActive && styles.navTextActive]}>{item.label}</Text>
+                <Text style={[styles.navText, isActive && styles.navTextActive]}>{t(item.labelKey)}</Text>
               </TouchableOpacity>
             );
           })}
@@ -2379,6 +2472,28 @@ const styles = StyleSheet.create({
     color: "#7B6E80",
     fontSize: 13,
     textAlign: "center",
+    marginBottom: 12,
+  },
+  periodStartButton: {
+    backgroundColor: "#8F72C5",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 12,
+    shadowColor: "#8F72C5",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  periodStartButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
   },
   probabilityCard: {
     marginTop: 10,
@@ -3406,5 +3521,51 @@ const styles = StyleSheet.create({
   navTextActive: {
     color: "#614694",
     fontWeight: "700",
+  },
+  languageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  languageModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 24,
+    width: "80%",
+    maxWidth: 320,
+  },
+  languageModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#4B3E53",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  languageOptionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0EAF4",
+  },
+  languageOptionText: {
+    fontSize: 16,
+    color: "#4B3E53",
+  },
+  languageOptionTextActive: {
+    color: "#8F72C5",
+    fontWeight: "700",
+  },
+  languageCancelButton: {
+    marginTop: 16,
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  languageCancelText: {
+    fontSize: 15,
+    color: "#85788A",
+    fontWeight: "600",
   },
 });
