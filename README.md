@@ -1,6 +1,6 @@
-# Welcome to your Expo app 👋
+# Lunella 👋
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Lunella is an [Expo](https://expo.dev) app focused on cycle tracking, wellbeing insights, and AI-assisted guidance.
 
 ## Get started
 

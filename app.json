@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "My-cycle",
-    "slug": "My-cycle",
+    "name": "Lunella",
+    "slug": "lunella",
+    "description": "Lunella is an AI-powered cycle and wellbeing companion.",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mycycle",
+    "scheme": "lunella",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
