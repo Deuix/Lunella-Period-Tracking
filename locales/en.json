@@ -1,8 +1,8 @@
 
 {
   "onboarding": {
-    "welcomeTitle": "Welcome to My cycle calendar",
-    "welcomeSubtitle": "You're ready to track your journey.",
+    "welcomeTitle": "Welcome to Lunella",
+    "welcomeSubtitle": "Because every cycle matters.",
     "nameTitle": "What should we call you?",
     "nameDescription": "Your name helps us make the experience personal.",
     "namePlaceholder": "Enter your name",
@@ -14,7 +14,7 @@
     "lastPeriodDate": "Last period date: {{date}}",
     "cycleDetailsTitle": "Lets create perfect experience for you.",
     "cycleDetailsDescription": "Add your cycle details for accurate predictions and reminders.",
-    "getStarted": "get started",
+    "getStarted": "Get started",
     "continue": "Continue",
     "finishOnboarding": "Finish onboarding",
     "back": "Back",
@@ -105,7 +105,8 @@
     "daysToOvulation": "days to ovulation",
     "expectedDate": "Expected {{date}}",
     "fertileDaysLeft": "fertile days left",
-    "daysToFertileWindow": "days to fertile window"
+    "daysToFertileWindow": "days to fertile window",
+    "setAsPeriodStart": "Mark as period start"
   },
   "pregnancy": {
     "title": "Pregnancy Probability",

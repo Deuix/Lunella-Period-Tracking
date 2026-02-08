@@ -104,7 +104,8 @@
     "daysToOvulation": "дней до овуляции",
     "expectedDate": "Ожидается {{date}}",
     "fertileDaysLeft": "фертильных дней осталось",
-    "daysToFertileWindow": "дней до фертильного окна"
+    "daysToFertileWindow": "дней до фертильного окна",
+    "setAsPeriodStart": "Отметить начало цикла"
   },
   "pregnancy": {
     "title": "Вероятность беременности",

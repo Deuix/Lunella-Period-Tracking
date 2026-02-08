@@ -104,7 +104,8 @@
     "daysToOvulation": "yumurtlamaya kalan gün",
     "expectedDate": "Beklenen {{date}}",
     "fertileDaysLeft": "doğurgan gün kaldı",
-    "daysToFertileWindow": "doğurgan pencereye kalan gün"
+    "daysToFertileWindow": "doğurgan pencereye kalan gün",
+    "setAsPeriodStart": "Döngü başlangıcı olarak işaretle"
   },
   "pregnancy": {
     "title": "Hamilelik Olasılığı",

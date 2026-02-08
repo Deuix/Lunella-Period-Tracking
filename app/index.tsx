@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -577,16 +578,11 @@ function DecorativeBackground() {
 function WelcomeIllustration() {
   return (
     <View style={styles.welcomeIllustration}>
-      <View style={styles.phoneMockup}>
-        <View style={styles.phoneNotch} />
-        <View style={styles.checkBadge}>
-          <Ionicons name="checkmark" size={30} color="#FFFFFF" />
-        </View>
-      </View>
-      <View style={styles.personWrap}>
-        <MaterialCommunityIcons name="human-female" size={122} color="#30345A" />
-      </View>
-      <View style={styles.illustrationGround} />
+      <Image
+        source={require("@/assets/images/onboarding.png")}
+        style={styles.onboardingImage}
+        contentFit="contain"
+      />
     </View>
   );
 }
@@ -663,6 +659,7 @@ export default function Index() {
 
   const onboardingAnimation = useRef(new Animated.Value(1)).current;
   const breathingScale = useRef(new Animated.Value(1)).current;
+  const breathingRippleAnim = useRef(new Animated.Value(0)).current;
   const breathingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const aiTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiMessagesScrollRef = useRef<ScrollView | null>(null);
@@ -710,6 +707,11 @@ export default function Index() {
 
   useEffect(() => {
     if (breathingStepIndex === null) {
+      Animated.timing(breathingRippleAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
       return;
     }
 
@@ -726,12 +728,19 @@ export default function Index() {
       setBreathingRound(BREATHING_TOTAL_ROUNDS);
       setBreathingSecondsLeft(0);
 
-      Animated.timing(breathingScale, {
-        toValue: 1,
-        duration: 500,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
+      Animated.parallel([
+        Animated.timing(breathingScale, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathingRippleAnim, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]).start();
 
       return;
     }
@@ -743,12 +752,30 @@ export default function Index() {
     setBreathingPhase(step.phase);
     setBreathingSecondsLeft(step.seconds);
 
-    Animated.timing(breathingScale, {
-      toValue: step.targetScale,
-      duration: step.seconds * 1000,
-      easing: Easing.inOut(Easing.sin),
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.timing(breathingScale, {
+        toValue: step.targetScale,
+        duration: step.seconds * 1000,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: true,
+      }),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(breathingRippleAnim, {
+            toValue: 1,
+            duration: 2000,
+            easing: Easing.out(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(breathingRippleAnim, {
+            toValue: 0.4,
+            duration: 2000,
+            easing: Easing.in(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ])
+      )
+    ]).start();
 
     if (breathingTimerRef.current) {
       clearInterval(breathingTimerRef.current);
@@ -1093,6 +1120,11 @@ export default function Index() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const handleSetAsPeriodStart = (date: Date) => {
+    setLastPeriodDate(startOfDay(date));
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   const sendAiMessage = (messageText: string) => {
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage || isAiTyping) {
@@ -1162,6 +1194,7 @@ export default function Index() {
     }
 
     breathingScale.setValue(1);
+    breathingRippleAnim.setValue(0);
     setBreathingPhase("inhale");
     setBreathingRound(1);
     setBreathingSecondsLeft(BREATHING_STEPS[0].seconds);
@@ -1375,6 +1408,13 @@ export default function Index() {
           })}
         </Text>
 
+        <TouchableOpacity
+          style={styles.setAsPeriodButton}
+          onPress={() => handleSetAsPeriodStart(selectedCalendarDate)}>
+          <MaterialCommunityIcons name="calendar-edit" size={18} color="#8F72C5" />
+          <Text style={styles.setAsPeriodButtonText}>{t("home.setAsPeriodStart")}</Text>
+        </TouchableOpacity>
+
         <Text style={styles.probabilityRecommendation}>{selectedDatePregnancyDetail.recommendation}</Text>
       </View>
     );
@@ -1585,33 +1625,93 @@ export default function Index() {
           </ScrollView>
         </View>
 
-        <View style={styles.breathingCard}>
-          <Text style={styles.tipsSectionTitle}>{t("breathing.meditationTitle")}</Text>
-          <Text style={styles.breathingGuideText}>{breathingGuideText}</Text>
-
-          <View style={styles.breathingStatusRow}>
-            <Text style={styles.breathingStatusText}>{breathingRoundText}</Text>
-            <Text style={styles.breathingStatusText}>{breathingStatusText}</Text>
+        <LinearGradient
+          colors={["#F8F4FF", "#FFFFFF"]}
+          style={styles.breathingContainer}>
+          <View style={styles.breathingHeader}>
+            <View>
+              <Text style={styles.breathingTitle}>{t("breathing.meditationTitle")}</Text>
+              <Text style={styles.breathingSubtitle}>{breathingRoundText}</Text>
+            </View>
+            <MaterialCommunityIcons name="leaf" size={24} color="#8F72C5" opacity={0.6} />
           </View>
 
-          <View style={styles.breathingSignWrap}>
-            <Animated.View style={[styles.breathingSign, { transform: [{ scale: breathingScale }] }]}>
-              <MaterialCommunityIcons name="flower" size={42} color="#8F72C5" />
+          <View style={styles.breathingVisualArea}>
+            <View style={styles.breathingCircleBackground}>
+              <Animated.View 
+                style={[
+                  styles.breathingRipple1, 
+                  { 
+                    opacity: breathingRippleAnim,
+                    transform: [{ scale: breathingRippleAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 1.2],
+                    }) }]
+                  }
+                ]} 
+              />
+              <Animated.View 
+                style={[
+                  styles.breathingRipple2, 
+                  { 
+                    opacity: breathingRippleAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.3, 0.6],
+                    }),
+                    transform: [{ scale: breathingRippleAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.9, 1.1],
+                    }) }]
+                  }
+                ]} 
+              />
+            </View>
+            
+            <Animated.View 
+              style={[
+                styles.breathingMainCircle, 
+                { transform: [{ scale: breathingScale }] }
+              ]}>
+              <LinearGradient
+                colors={["#E9DFFF", "#F5F0FF"]}
+                style={styles.breathingCircleGradient}>
+                <MaterialCommunityIcons 
+                  name={breathingPhase === "done" ? "check-circle" : "flower"} 
+                  size={48} 
+                  color="#8F72C5" 
+                />
+              </LinearGradient>
             </Animated.View>
+
+            <View style={styles.breathingPhaseOverlay}>
+              <Text style={styles.breathingPhaseText}>
+                {isBreathingRunning ? activeBreathingStep?.labelKey ? t(activeBreathingStep.labelKey) : t("breathing.breathe") : 
+                 breathingPhase === "done" ? t("breathing.doneGuide") : t("breathing.ready")}
+              </Text>
+              {isBreathingRunning && (
+                <Text style={styles.breathingTimerText}>{breathingSecondsLeft}s</Text>
+              )}
+            </View>
           </View>
+
+          <Text style={styles.breathingDescription}>
+            {breathingGuideText}
+          </Text>
 
           <TouchableOpacity
-            style={[styles.breathingActionButton, isBreathingRunning && styles.breathingActionButtonStop]}
+            activeOpacity={0.8}
+            style={[styles.breathingStartButton, isBreathingRunning && styles.breathingStopButton]}
             onPress={isBreathingRunning ? () => stopBreathingSession("ready") : startBreathingSession}>
-            <Text style={styles.breathingActionButtonText}>
+            <Text style={styles.breathingStartButtonText}>
               {isBreathingRunning
                 ? t("breathing.stopExercise")
                 : breathingPhase === "done"
                   ? t("breathing.startAgain")
                   : t("breathing.startBreathing")}
             </Text>
+            {!isBreathingRunning && <Ionicons name="play" size={18} color="#FFFFFF" style={{marginLeft: 8}} />}
           </TouchableOpacity>
-        </View>
+        </LinearGradient>
       </ScrollView>
     );
   };
@@ -2232,52 +2332,13 @@ const styles = StyleSheet.create({
   },
   welcomeIllustration: {
     alignItems: "center",
-    justifyContent: "flex-end",
-    height: "58%",
-    marginBottom: 8,
-  },
-  phoneMockup: {
-    width: 132,
-    height: 238,
-    borderRadius: 24,
-    borderWidth: 6,
-    borderColor: "#4A4A69",
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
     justifyContent: "center",
-    position: "absolute",
-    left: "10%",
-    bottom: 12,
+    height: "55%",
+    marginBottom: 10,
   },
-  phoneNotch: {
-    position: "absolute",
-    width: 50,
-    height: 14,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    backgroundColor: "#4A4A69",
-    top: 0,
-  },
-  checkBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#8D72C8",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  personWrap: {
-    position: "absolute",
-    right: "8%",
-    bottom: -2,
-  },
-  illustrationGround: {
-    width: "86%",
-    height: 2,
-    backgroundColor: "#D8C7D2",
-    opacity: 0.8,
-    borderRadius: 2,
-    marginTop: 18,
+  onboardingImage: {
+    width: "100%",
+    height: "100%",
   },
   welcomeTextBlock: {
     alignItems: "center",
@@ -2493,6 +2554,23 @@ const styles = StyleSheet.create({
   periodStartButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
+    fontWeight: "700",
+  },
+  setAsPeriodButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E7DCE6",
+    backgroundColor: "#FDF8FD",
+    marginTop: 4,
+  },
+  setAsPeriodButtonText: {
+    color: "#8F72C5",
+    fontSize: 14,
     fontWeight: "700",
   },
   probabilityCard: {
@@ -3392,60 +3470,125 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  breathingCard: {
-    borderRadius: 20,
+  breathingContainer: {
+    borderRadius: 32,
     borderWidth: 1,
-    borderColor: "#E7DCE6",
-    backgroundColor: "#FFFFFFEE",
-    padding: 16,
-    gap: 10,
+    borderColor: "#EBE0FF",
+    padding: 24,
+    gap: 20,
+    shadowColor: "#8F72C5",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 4,
+    overflow: "hidden",
   },
-  breathingGuideText: {
-    color: "#7B6E80",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  breathingStatusRow: {
+  breathingHeader: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    alignItems: "flex-start",
   },
-  breathingStatusText: {
-    color: "#5C4F62",
-    fontSize: 13,
-    fontWeight: "700",
+  breathingTitle: {
+    fontSize: 22,
+    color: "#2F2436",
+    fontWeight: "800",
+    letterSpacing: -0.5,
   },
-  breathingSignWrap: {
-    marginTop: 4,
+  breathingSubtitle: {
+    fontSize: 14,
+    color: "#8F72C5",
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  breathingVisualArea: {
+    height: 220,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
+    position: "relative",
   },
-  breathingSign: {
+  breathingCircleBackground: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  breathingRipple1: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "#E9DFFF",
+    opacity: 0.5,
+    position: "absolute",
+  },
+  breathingRipple2: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 1,
+    borderColor: "#E9DFFF",
+    opacity: 0.8,
+    position: "absolute",
+  },
+  breathingMainCircle: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 1,
-    borderColor: "#D8C8E7",
-    backgroundColor: "#F5ECFD",
+    shadowColor: "#8F72C5",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  breathingCircleGradient: {
+    flex: 1,
+    borderRadius: 60,
     alignItems: "center",
     justifyContent: "center",
   },
-  breathingActionButton: {
-    borderRadius: 18,
-    minHeight: 48,
+  breathingPhaseOverlay: {
+    position: "absolute",
+    bottom: -10,
+    alignItems: "center",
+  },
+  breathingPhaseText: {
+    fontSize: 18,
+    color: "#4A3F53",
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  breathingTimerText: {
+    fontSize: 14,
+    color: "#8F72C5",
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  breathingDescription: {
+    fontSize: 15,
+    color: "#7B6E80",
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 10,
+  },
+  breathingStartButton: {
     backgroundColor: "#8F72C5",
+    borderRadius: 20,
+    height: 60,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    shadowColor: "#8F72C5",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  breathingActionButtonStop: {
-    backgroundColor: "#7C659E",
+  breathingStopButton: {
+    backgroundColor: "#2F2436",
+    shadowColor: "#000000",
   },
-  breathingActionButtonText: {
+  breathingStartButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
   },
   sectionTitle: {
