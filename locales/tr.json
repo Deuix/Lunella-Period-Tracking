@@ -172,6 +172,7 @@
     "replySummary": "Hızlı plan: döngü uzunluğu {{cycleLength}} gün, regl süresi {{periodLength}} gün, sonraki regl {{nextPeriodDate}}, yumurtlama {{ovulationDate}}, doğurganlık penceresi {{fertilityWindow}}. Seçili hedefleriniz: {{goals}}.",
     "replyDefault": "İşte mevcut döngü özetiniz: sonraki regl {{nextPeriodDate}}, yumurtlama {{ovulationDate}}, doğurganlık penceresi {{fertilityWindow}}. Regl zamanlaması, semptomlar, yiyecek ipuçları veya doğurganlık rehberliği hakkında sorun.",
     "fallbackNotice": "Canlı AI şu anda kullanılamıyor. İşte çevrimdışı rehberlik:",
+    "connectionError": "Canlı AI'a şu anda bağlanamıyorum. Lütfen biraz sonra tekrar deneyin.",
     "generalCycleTracking": "genel döngü takibi"
   },
   "profile": {

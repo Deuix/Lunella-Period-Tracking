@@ -1,16 +1,20 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Image } from "expo-image";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Alert,
   Animated,
   Easing,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
-  Share,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -18,11 +22,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Markdown from "react-native-markdown-display";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getDateLocale, persistLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "../i18n";
-import { getOpenRouterChatReply } from "../services/openrouter";
+import { streamOpenRouterChatReply } from "../services/openrouter";
 import {
   addRevenueCatCustomerInfoListener,
   getPackagesFromOffering,
@@ -537,65 +540,6 @@ function buildMonthlyInsight(
     periodRangeLabel,
     predictedSymptomScore,
   };
-}
-
-function buildAiAssistantReply(
-  question: string,
-  context: CycleContext,
-  cycleLength: number,
-  periodLength: number,
-  goals: GoalOption[],
-  t: (key: string, opts?: Record<string, unknown>) => string,
-  dateLocale: string,
-): string {
-  const prompt = question.toLowerCase();
-  const nextPeriodDate = context.nextPeriodStart.toLocaleDateString(dateLocale, {
-    month: "short",
-    day: "numeric",
-  });
-  const ovulationDate = context.nextOvulationDate.toLocaleDateString(dateLocale, {
-    month: "short",
-    day: "numeric",
-  });
-  const fertilityWindow = `${context.fertilityStartDate.toLocaleDateString(dateLocale, {
-    month: "short",
-    day: "numeric",
-  })} - ${context.fertilityEndDate.toLocaleDateString(dateLocale, {
-    month: "short",
-    day: "numeric",
-  })}`;
-
-  if (prompt.includes("ovulation")) {
-    return t("ai.replyOvulation", { ovulationDate, fertilityWindow });
-  }
-
-  if (prompt.includes("fertility") || prompt.includes("conceive")) {
-    return t("ai.replyFertility", { fertilityWindow });
-  }
-
-  if (prompt.includes("period") || prompt.includes("late")) {
-    return t("ai.replyPeriod", { cycleLength, nextPeriodDate, daysLeft: context.daysUntilNextPeriod });
-  }
-
-  if (prompt.includes("cramp") || prompt.includes("pain") || prompt.includes("tea")) {
-    return t("ai.replyCramp");
-  }
-
-  if (prompt.includes("mood") || prompt.includes("stress") || prompt.includes("anxious")) {
-    return t("ai.replyMood");
-  }
-
-  if (prompt.includes("summary") || prompt.includes("plan")) {
-    const goalLine = goals.length > 0
-      ? goals.map((g) => {
-          const found = GOAL_OPTIONS.find((o) => o.id === g);
-          return found ? t(found.labelKey) : g;
-        }).join(", ")
-      : t("ai.generalCycleTracking");
-    return t("ai.replySummary", { cycleLength, periodLength, nextPeriodDate, ovulationDate, fertilityWindow, goals: goalLine });
-  }
-
-  return t("ai.replyDefault", { nextPeriodDate, ovulationDate, fertilityWindow });
 }
 
 function DecorativeBackground() {
@@ -1624,9 +1568,6 @@ export default function Index() {
     setAiMessages((currentMessages) => [...currentMessages, userMessage]);
     setAiInput("");
     setIsAiTyping(true);
-    if (!isPro) {
-      setAiUsageCount((currentCount) => currentCount + 1);
-    }
 
     const goalLine = goals.length > 0
       ? goals
@@ -1638,52 +1579,79 @@ export default function Index() {
       : t("ai.generalCycleTracking");
 
     const assistantSystemPrompt = [
-      "You are a menstrual and cycle wellness assistant in a mobile app.",
-      "Give practical, compassionate, non-judgmental guidance.",
-      "Do not provide diagnosis. For severe symptoms, suggest contacting a clinician.",
-      `Reply in language code: ${i18n.language}.`,
+      "You are Lunella AI, a professional menstrual and reproductive health assistant in a mobile app.",
+      "Provide clear, evidence-based, and compassionate guidance in a professional tone.",
+      "You are educational support only: do not diagnose, do not prescribe medication doses, and do not replace clinical care.",
+      "If there are red flags (severe pain, heavy bleeding, fainting, fever, pregnancy complications, or self-harm thoughts), advise urgent in-person medical care.",
+      "Keep uncertainty honest and avoid making up facts.",
+      "Answer in the user's language, with concise structure: direct answer, practical next steps, when to seek care.",
+      "Always end with a short disclaimer in the same language saying this is general information, not medical diagnosis.",
+      `User language: ${i18n.language}.`,
       `Cycle length: ${cycleLength}. Period length: ${periodLength}.`,
       `Next period starts in ${cycleContext.daysUntilNextPeriod} days (${cycleContext.nextPeriodStart.toISOString()}).`,
       `Next ovulation in ${cycleContext.daysUntilOvulation} days (${cycleContext.nextOvulationDate.toISOString()}).`,
       `Fertility window: ${cycleContext.fertilityStartDate.toISOString()} - ${cycleContext.fertilityEndDate.toISOString()}.`,
       `User goals: ${goalLine}.`,
-      "Keep answers concise (3-6 sentences) unless user asks for detail.",
+      "Keep answers concise (about 4-8 sentences) unless the user asks for more depth.",
     ].join(" ");
 
     let responseText = "";
+    let usedLiveAi = false;
 
-    try {
-      responseText = await getOpenRouterChatReply([
-        {
-          role: "system",
-          content: assistantSystemPrompt,
-        },
-        ...aiHistoryForPrompt,
-        {
-          role: "user",
-          content: trimmedMessage,
-        },
-      ]);
-    } catch {
-      const fallbackText = buildAiAssistantReply(
-        trimmedMessage,
-        cycleContext,
-        cycleLength,
-        periodLength,
-        goals,
-        t,
-        dateLocale,
-      );
-      responseText = `${t("ai.fallbackNotice")}\n\n${fallbackText}`;
-    }
-
+    // Create a placeholder assistant message for streaming
+    const assistantMessageId = `assistant-${Date.now()}`;
     const assistantMessage: AiMessage = {
-      id: `assistant-${Date.now()}`,
+      id: assistantMessageId,
       role: "assistant",
-      text: responseText,
+      text: "",
     };
 
     setAiMessages((currentMessages) => [...currentMessages, assistantMessage]);
+
+    try {
+      responseText = await streamOpenRouterChatReply(
+        [
+          {
+            role: "system",
+            content: assistantSystemPrompt,
+          },
+          ...aiHistoryForPrompt,
+          {
+            role: "user",
+            content: trimmedMessage,
+          },
+        ],
+        (token: string) => {
+          // Update the assistant message with each token
+          setAiMessages((currentMessages) => {
+            const updatedMessages = [...currentMessages];
+            const lastMessage = updatedMessages[updatedMessages.length - 1];
+            if (lastMessage?.id === assistantMessageId) {
+              lastMessage.text += token;
+            }
+            return updatedMessages;
+          });
+        }
+      );
+      usedLiveAi = true;
+    } catch (error) {
+      console.warn("Lunella AI request failed", error);
+      responseText = t("ai.connectionError");
+      // Update the message with error text
+      setAiMessages((currentMessages) => {
+        const updatedMessages = [...currentMessages];
+        const lastMessage = updatedMessages[updatedMessages.length - 1];
+        if (lastMessage?.id === assistantMessageId) {
+          lastMessage.text = responseText;
+        }
+        return updatedMessages;
+      });
+    }
+
+    if (!isPro && usedLiveAi) {
+      setAiUsageCount((currentCount) => currentCount + 1);
+    }
+
     setIsAiTyping(false);
   };
 
@@ -2442,7 +2410,10 @@ export default function Index() {
 
   const renderAiTab = () => {
     return (
-      <View style={styles.aiPageWrap}>
+      <KeyboardAvoidingView
+        style={styles.aiPageWrap}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={74}>
         <LinearGradient
           colors={["#F4EDFC", "#FCEEF5"]}
           start={{ x: 0, y: 0 }}
@@ -2451,10 +2422,6 @@ export default function Index() {
           <View>
             <Text style={styles.aiHeroTitle}>{t("ai.heroTitle")}</Text>
             <Text style={styles.aiHeroSubtitle}>{t("ai.heroSubtitle")}</Text>
-          </View>
-          <View style={styles.aiStatusChip}>
-            <MaterialCommunityIcons name="brain" size={15} color="#5D4193" />
-            <Text style={styles.aiStatusChipText}>{t("ai.statusChip")}</Text>
           </View>
         </LinearGradient>
 
@@ -2473,6 +2440,7 @@ export default function Index() {
 
         <ScrollView
           horizontal
+          style={styles.aiPromptScroll}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.aiPromptRow}>
           {aiQuickPrompts.map((prompt) => (
@@ -2494,13 +2462,26 @@ export default function Index() {
                 styles.aiBubble,
                 message.role === "assistant" ? styles.aiAssistantBubble : styles.aiUserBubble,
               ]}>
-              <Text
-                style={[
-                  styles.aiBubbleText,
-                  message.role === "assistant" ? styles.aiAssistantBubbleText : styles.aiUserBubbleText,
-                ]}>
-                {message.id === "assistant-welcome" ? t("ai.welcomeMessage") : message.text}
-              </Text>
+              {message.role === "assistant" ? (
+                <Markdown
+                  style={{
+                    body: { ...styles.aiAssistantBubbleText, margin: 0, padding: 0 },
+                    paragraph: { ...styles.aiBubbleText, marginTop: 0, marginBottom: 0 },
+                    strong: { fontWeight: "700" },
+                    em: { fontStyle: "italic" },
+                    text: { ...styles.aiAssistantBubbleText },
+                  }}>
+                  {message.id === "assistant-welcome" ? t("ai.welcomeMessage") : message.text}
+                </Markdown>
+              ) : (
+                <Text
+                  style={[
+                    styles.aiBubbleText,
+                    styles.aiUserBubbleText,
+                  ]}>
+                  {message.text}
+                </Text>
+              )}
             </View>
           ))}
 
@@ -2530,7 +2511,7 @@ export default function Index() {
             <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     );
   };
 
@@ -3822,14 +3803,19 @@ const styles = StyleSheet.create({
   aiPromptRow: {
     gap: 8,
     paddingRight: 4,
+    alignItems: "center",
+  },
+  aiPromptScroll: {
+    flexGrow: 0,
   },
   aiPromptChip: {
+    alignSelf: "flex-start",
     borderRadius: 18,
     borderWidth: 1,
     borderColor: "#DDCFE3",
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   aiPromptChipText: {
     color: "#5E5264",
@@ -3862,9 +3848,12 @@ const styles = StyleSheet.create({
   aiBubbleText: {
     fontSize: 14,
     lineHeight: 20,
+    fontFamily: undefined,
   },
   aiAssistantBubbleText: {
     color: "#3A2E40",
+    fontSize: 14,
+    lineHeight: 20,
   },
   aiUserBubbleText: {
     color: "#FFFFFF",

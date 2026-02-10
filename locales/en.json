@@ -173,6 +173,7 @@
     "replySummary": "Quick plan: cycle length {{cycleLength}} days, period length {{periodLength}} days, next period {{nextPeriodDate}}, ovulation {{ovulationDate}}, fertility window {{fertilityWindow}}. Your selected goals: {{goals}}.",
     "replyDefault": "Here is your current cycle snapshot: next period {{nextPeriodDate}}, ovulation {{ovulationDate}}, fertility window {{fertilityWindow}}. Ask me about period timing, symptoms, food tips, or fertility guidance.",
     "fallbackNotice": "Live AI is temporarily unavailable. Here is your offline guidance:",
+    "connectionError": "I'm having trouble connecting to live AI right now. Please try again in a moment.",
     "generalCycleTracking": "general cycle tracking"
   },
   "profile": {
