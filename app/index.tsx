@@ -2,12 +2,14 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Easing,
   Modal,
   Pressable,
+  Share,
   ScrollView,
   StyleSheet,
   Switch,
@@ -18,7 +20,25 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getDateLocale, persistLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "../i18n";
+import { getOpenRouterChatReply } from "../services/openrouter";
+import {
+  addRevenueCatCustomerInfoListener,
+  getPackagesFromOffering,
+  getRevenueCatCustomerInfo,
+  getRevenueCatOfferings,
+  hasLunellaProEntitlement,
+  initializeRevenueCat,
+  isRevenueCatUserCancelledError,
+  presentRevenueCatCustomerCenter,
+  presentRevenueCatPaywall,
+  presentRevenueCatPaywallIfNeeded,
+  purchaseRevenueCatPackage,
+  restoreRevenueCatPurchases,
+  type RevenueCatPackagesMap,
+  type RevenueCatPlanId,
+} from "../services/revenuecat";
 
 type GoalOption = "cycle_tracking" | "trying_to_conceive" | "pregnancy_tracking";
 type HomeTab = "home" | "insights" | "ai" | "tips" | "profile";
@@ -30,6 +50,35 @@ type AiMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+};
+
+type SymptomLogEntry = {
+  id: string;
+  dateISO: string;
+  flowKey: string;
+  moods: string[];
+};
+
+type ProUpsellSource = "ai" | "insights" | "export" | "health_sync" | "passcode";
+
+type PersistedAppState = {
+  isOnboardingDone: boolean;
+  name: string;
+  goals: GoalOption[];
+  lastPeriodDateISO: string;
+  cycleLength: number;
+  periodLength: number;
+  remindersEnabled: boolean;
+  selectedFlow: string;
+  selectedMoods: string[];
+  insightNudgesEnabled: boolean;
+  healthSyncEnabled: boolean;
+  pinLockEnabled: boolean;
+  aiMessages: AiMessage[];
+  symptomLogs: SymptomLogEntry[];
+  aiUsageDateISO: string;
+  aiUsageCount: number;
+  isPro: boolean;
 };
 
 type MoodOption = {
@@ -178,6 +227,20 @@ const GIRL_TIPS: GirlTip[] = [
 ];
 
 const BREATHING_TOTAL_ROUNDS = 4;
+const APP_STATE_STORAGE_KEY = "lunella_app_state_v1";
+const FREE_AI_DAILY_LIMIT = 3;
+const EMPTY_REVENUECAT_PACKAGES: RevenueCatPackagesMap = {
+  monthly: null,
+  yearly: null,
+  lifetime: null,
+};
+const INITIAL_AI_MESSAGES: AiMessage[] = [
+  {
+    id: "assistant-welcome",
+    role: "assistant",
+    text: "",
+  },
+];
 const BREATHING_STEPS: BreathStep[] = [
   {
     phase: "inhale",
@@ -614,10 +677,17 @@ function NumberAdjuster({ label, hint, value, min, max, onChange }: NumberAdjust
 export default function Index() {
   const { t, i18n } = useTranslation();
   const dateLocale = getDateLocale(i18n.language as SupportedLanguage);
+  const todayISO = startOfDay(new Date()).toISOString();
 
+  const [isHydrated, setIsHydrated] = useState(false);
   const [step, setStep] = useState(0);
   const [stepDirection, setStepDirection] = useState<1 | -1>(1);
   const [isOnboardingDone, setIsOnboardingDone] = useState(false);
+  const [isPro, setIsPro] = useState(false);
+  const [isRevenueCatEnabled, setIsRevenueCatEnabled] = useState(false);
+  const [isSubscriptionModalVisible, setIsSubscriptionModalVisible] = useState(false);
+  const [isRevenueCatLoading, setIsRevenueCatLoading] = useState(false);
+  const [revenueCatPackages, setRevenueCatPackages] = useState<RevenueCatPackagesMap>(EMPTY_REVENUECAT_PACKAGES);
 
   const [name, setName] = useState("");
   const [goals, setGoals] = useState<GoalOption[]>([]);
@@ -638,15 +708,12 @@ export default function Index() {
   const [insightNudgesEnabled, setInsightNudgesEnabled] = useState(true);
   const [healthSyncEnabled, setHealthSyncEnabled] = useState(false);
   const [pinLockEnabled, setPinLockEnabled] = useState(false);
+  const [symptomLogs, setSymptomLogs] = useState<SymptomLogEntry[]>([]);
   const [aiInput, setAiInput] = useState("");
   const [isAiTyping, setIsAiTyping] = useState(false);
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>([
-    {
-      id: "assistant-welcome",
-      role: "assistant",
-      text: "",
-    },
-  ]);
+  const [aiUsageDateISO, setAiUsageDateISO] = useState(todayISO);
+  const [aiUsageCount, setAiUsageCount] = useState(0);
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>(INITIAL_AI_MESSAGES);
   const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
 
   const monthOptions = useMemo(() => {
@@ -661,8 +728,188 @@ export default function Index() {
   const breathingScale = useRef(new Animated.Value(1)).current;
   const breathingRippleAnim = useRef(new Animated.Value(0)).current;
   const breathingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const aiTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiMessagesScrollRef = useRef<ScrollView | null>(null);
+
+  useEffect(() => {
+    const hydrateAppState = async () => {
+      try {
+        const storedStateRaw = await AsyncStorage.getItem(APP_STATE_STORAGE_KEY);
+        if (!storedStateRaw) {
+          setIsHydrated(true);
+          return;
+        }
+
+        const storedState = JSON.parse(storedStateRaw) as Partial<PersistedAppState>;
+
+        if (typeof storedState.isOnboardingDone === "boolean") {
+          setIsOnboardingDone(storedState.isOnboardingDone);
+        }
+        if (typeof storedState.isPro === "boolean") {
+          setIsPro(storedState.isPro);
+        }
+        if (typeof storedState.name === "string") {
+          setName(storedState.name);
+        }
+        if (Array.isArray(storedState.goals)) {
+          setGoals(storedState.goals.filter((goal) => GOAL_OPTIONS.some((option) => option.id === goal)) as GoalOption[]);
+        }
+        if (typeof storedState.lastPeriodDateISO === "string") {
+          const parsedDate = new Date(storedState.lastPeriodDateISO);
+          if (!Number.isNaN(parsedDate.getTime())) {
+            setLastPeriodDate(startOfDay(parsedDate));
+            setSelectedCalendarDate(startOfDay(parsedDate));
+          }
+        }
+        if (typeof storedState.cycleLength === "number") {
+          setCycleLength(storedState.cycleLength);
+        }
+        if (typeof storedState.periodLength === "number") {
+          setPeriodLength(storedState.periodLength);
+        }
+        if (typeof storedState.remindersEnabled === "boolean") {
+          setRemindersEnabled(storedState.remindersEnabled);
+        }
+        if (typeof storedState.selectedFlow === "string") {
+          setSelectedFlow(storedState.selectedFlow);
+        }
+        if (Array.isArray(storedState.selectedMoods)) {
+          setSelectedMoods(storedState.selectedMoods);
+        }
+        if (typeof storedState.insightNudgesEnabled === "boolean") {
+          setInsightNudgesEnabled(storedState.insightNudgesEnabled);
+        }
+        if (typeof storedState.healthSyncEnabled === "boolean") {
+          setHealthSyncEnabled(storedState.healthSyncEnabled);
+        }
+        if (typeof storedState.pinLockEnabled === "boolean") {
+          setPinLockEnabled(storedState.pinLockEnabled);
+        }
+        if (Array.isArray(storedState.symptomLogs)) {
+          setSymptomLogs(storedState.symptomLogs);
+        }
+        if (typeof storedState.aiUsageDateISO === "string") {
+          setAiUsageDateISO(storedState.aiUsageDateISO);
+        }
+        if (typeof storedState.aiUsageCount === "number") {
+          setAiUsageCount(storedState.aiUsageCount);
+        }
+
+        if (Array.isArray(storedState.aiMessages) && storedState.aiMessages.length > 0) {
+          setAiMessages(storedState.aiMessages);
+        }
+      } catch {
+        // Если состояние повреждено, продолжаем со значениями по умолчанию.
+      } finally {
+        setIsHydrated(true);
+      }
+    };
+
+    void hydrateAppState();
+  }, []);
+
+  const refreshRevenueCatState = useCallback(async () => {
+    if (!isRevenueCatEnabled) {
+      return;
+    }
+
+    const [customerInfo, offerings] = await Promise.all([
+      getRevenueCatCustomerInfo(),
+      getRevenueCatOfferings(),
+    ]);
+
+    setIsPro(hasLunellaProEntitlement(customerInfo));
+    setRevenueCatPackages(getPackagesFromOffering(offerings?.current ?? null));
+  }, [isRevenueCatEnabled]);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const setupRevenueCat = async () => {
+      try {
+        const enabled = await initializeRevenueCat();
+        setIsRevenueCatEnabled(enabled);
+
+        if (!enabled) {
+          return;
+        }
+
+        const [customerInfo, offerings] = await Promise.all([
+          getRevenueCatCustomerInfo(),
+          getRevenueCatOfferings(),
+        ]);
+
+        setIsPro(hasLunellaProEntitlement(customerInfo));
+        setRevenueCatPackages(getPackagesFromOffering(offerings?.current ?? null));
+
+        unsubscribe = addRevenueCatCustomerInfoListener((updatedInfo) => {
+          setIsPro(hasLunellaProEntitlement(updatedInfo));
+        });
+      } catch {
+        setIsRevenueCatEnabled(false);
+      }
+    };
+
+    void setupRevenueCat();
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    const persistedState: PersistedAppState = {
+      isOnboardingDone,
+      name,
+      goals,
+      lastPeriodDateISO: lastPeriodDate.toISOString(),
+      cycleLength,
+      periodLength,
+      remindersEnabled,
+      selectedFlow,
+      selectedMoods,
+      insightNudgesEnabled,
+      healthSyncEnabled,
+      pinLockEnabled,
+      aiMessages,
+      symptomLogs,
+      aiUsageDateISO,
+      aiUsageCount,
+      isPro,
+    };
+
+    void AsyncStorage.setItem(APP_STATE_STORAGE_KEY, JSON.stringify(persistedState));
+  }, [
+    aiMessages,
+    aiUsageCount,
+    aiUsageDateISO,
+    cycleLength,
+    goals,
+    healthSyncEnabled,
+    insightNudgesEnabled,
+    isHydrated,
+    isOnboardingDone,
+    isPro,
+    lastPeriodDate,
+    name,
+    periodLength,
+    pinLockEnabled,
+    remindersEnabled,
+    selectedFlow,
+    selectedMoods,
+    symptomLogs,
+  ]);
+
+  useEffect(() => {
+    const currentDayISO = startOfDay(new Date()).toISOString();
+    if (aiUsageDateISO !== currentDayISO) {
+      setAiUsageDateISO(currentDayISO);
+      setAiUsageCount(0);
+    }
+  }, [aiUsageDateISO]);
 
   useEffect(() => {
     onboardingAnimation.setValue(0);
@@ -678,10 +925,6 @@ export default function Index() {
     return () => {
       if (breathingTimerRef.current) {
         clearInterval(breathingTimerRef.current);
-      }
-
-      if (aiTypingTimeoutRef.current) {
-        clearTimeout(aiTypingTimeoutRef.current);
       }
     };
   }, []);
@@ -808,7 +1051,7 @@ export default function Index() {
         breathingTimerRef.current = null;
       }
     };
-  }, [breathingScale, breathingStepIndex]);
+  }, [breathingRippleAnim, breathingScale, breathingStepIndex]);
 
   useEffect(() => {
     if (activeTab !== "tips") {
@@ -850,16 +1093,10 @@ export default function Index() {
   }, [activeTab, aiMessages, isAiTyping]);
 
   useEffect(() => {
-    if (activeTab === "ai") {
-      return;
-    }
-
-    if (aiTypingTimeoutRef.current) {
-      clearTimeout(aiTypingTimeoutRef.current);
-      aiTypingTimeoutRef.current = null;
+    if (activeTab !== "ai" && isAiTyping) {
       setIsAiTyping(false);
     }
-  }, [activeTab]);
+  }, [activeTab, isAiTyping]);
 
   useEffect(() => {
     if (activeTab !== "profile" && profileView !== "main") {
@@ -947,6 +1184,58 @@ export default function Index() {
     const total = scores.reduce((sum, value) => sum + value, 0);
     return Math.round(total / Math.max(1, scores.length));
   }, [monthlyInsights]);
+
+  const recentSymptomLogs = useMemo(() => {
+    const cutoffDate = addDays(startOfDay(new Date()), -45);
+    return symptomLogs.filter((entry) => {
+      const entryDate = new Date(entry.dateISO);
+      return !Number.isNaN(entryDate.getTime()) && diffInDays(entryDate, cutoffDate) >= 0;
+    });
+  }, [symptomLogs]);
+
+  const proInsightsSummary = useMemo(() => {
+    if (recentSymptomLogs.length === 0) {
+      return {
+        logsCount: 0,
+        highDiscomfortDays: 0,
+        topMoodKey: null as string | null,
+        topFlowKey: null as string | null,
+      };
+    }
+
+    const moodFrequency = new Map<string, number>();
+    const flowFrequency = new Map<string, number>();
+    let highDiscomfortDays = 0;
+
+    recentSymptomLogs.forEach((entry) => {
+      flowFrequency.set(entry.flowKey, (flowFrequency.get(entry.flowKey) ?? 0) + 1);
+
+      let hasDiscomfortMood = false;
+      entry.moods.forEach((moodKey) => {
+        moodFrequency.set(moodKey, (moodFrequency.get(moodKey) ?? 0) + 1);
+        if (moodKey === "moods.cramps" || moodKey === "moods.headache" || moodKey === "moods.low") {
+          hasDiscomfortMood = true;
+        }
+      });
+
+      if (hasDiscomfortMood) {
+        highDiscomfortDays += 1;
+      }
+    });
+
+    const topMoodKey = [...moodFrequency.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const topFlowKey = [...flowFrequency.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+    return {
+      logsCount: recentSymptomLogs.length,
+      highDiscomfortDays,
+      topMoodKey,
+      topFlowKey,
+    };
+  }, [recentSymptomLogs]);
+
+  const freeAiRemaining = Math.max(0, FREE_AI_DAILY_LIMIT - aiUsageCount);
+  const isAiLockedForFree = !isPro && freeAiRemaining <= 0;
 
   const selectedDatePregnancyDetail = useMemo(
     () =>
@@ -1037,13 +1326,6 @@ export default function Index() {
       ? t("breathing.doneGuide")
       : activeBreathingStep?.guidanceKey ? t(activeBreathingStep.guidanceKey) : t("breathing.readyGuide");
 
-  const breathingStatusText =
-    breathingPhase === "done"
-      ? t("breathing.completedRounds", { count: BREATHING_TOTAL_ROUNDS })
-      : isBreathingRunning
-        ? t("breathing.statusRunning", { label: activeBreathingStep?.labelKey ? t(activeBreathingStep.labelKey) : t("breathing.breathe"), seconds: breathingSecondsLeft })
-        : t("breathing.ready");
-
   const breathingRoundText =
     breathingRound > 0
       ? t("breathing.roundProgress", { current: breathingRound, total: BREATHING_TOTAL_ROUNDS })
@@ -1113,6 +1395,195 @@ export default function Index() {
     });
   };
 
+  const openSubscriptionModal = () => {
+    if (!isRevenueCatEnabled) {
+      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
+      return;
+    }
+
+    setIsSubscriptionModalVisible(true);
+  };
+
+  const handlePresentPaywall = async (ifNeeded = true) => {
+    if (!isRevenueCatEnabled) {
+      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
+      return;
+    }
+
+    setIsRevenueCatLoading(true);
+    try {
+      if (ifNeeded) {
+        await presentRevenueCatPaywallIfNeeded();
+      } else {
+        await presentRevenueCatPaywall();
+      }
+
+      const customerInfo = await getRevenueCatCustomerInfo();
+      const unlocked = hasLunellaProEntitlement(customerInfo);
+      setIsPro(unlocked);
+      await refreshRevenueCatState();
+
+      if (unlocked) {
+        setIsSubscriptionModalVisible(false);
+      }
+    } catch {
+      Alert.alert(t("pro.genericErrorTitle"), t("pro.paywallError"));
+    } finally {
+      setIsRevenueCatLoading(false);
+    }
+  };
+
+  const handlePurchasePlan = async (planId: RevenueCatPlanId) => {
+    if (!isRevenueCatEnabled) {
+      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
+      return;
+    }
+
+    const selectedPackage = revenueCatPackages[planId];
+
+    if (!selectedPackage) {
+      Alert.alert(t("pro.genericErrorTitle"), t("pro.productUnavailable"));
+      return;
+    }
+
+    setIsRevenueCatLoading(true);
+    try {
+      const purchaseResult = await purchaseRevenueCatPackage(selectedPackage);
+      const unlocked = hasLunellaProEntitlement(purchaseResult.customerInfo);
+      setIsPro(unlocked);
+
+      if (unlocked) {
+        Alert.alert(t("pro.purchaseSuccessTitle"), t("pro.purchaseSuccessDescription"));
+        setIsSubscriptionModalVisible(false);
+      }
+    } catch (error) {
+      if (!isRevenueCatUserCancelledError(error)) {
+        Alert.alert(t("pro.genericErrorTitle"), t("pro.purchaseError"));
+      }
+    } finally {
+      setIsRevenueCatLoading(false);
+      await refreshRevenueCatState();
+    }
+  };
+
+  const handleRestoreSubscription = async () => {
+    if (!isRevenueCatEnabled) {
+      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
+      return;
+    }
+
+    setIsRevenueCatLoading(true);
+    try {
+      const customerInfo = await restoreRevenueCatPurchases();
+      setIsPro(hasLunellaProEntitlement(customerInfo));
+      Alert.alert(t("pro.restoreSuccessTitle"), t("pro.restoreSuccessDescription"));
+    } catch {
+      Alert.alert(t("pro.genericErrorTitle"), t("pro.restoreError"));
+    } finally {
+      setIsRevenueCatLoading(false);
+      await refreshRevenueCatState();
+    }
+  };
+
+  const handleOpenCustomerCenter = async () => {
+    if (!isRevenueCatEnabled) {
+      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
+      return;
+    }
+
+    setIsRevenueCatLoading(true);
+    try {
+      await presentRevenueCatCustomerCenter({
+        onRestoreCompleted: ({ customerInfo }) => {
+          setIsPro(hasLunellaProEntitlement(customerInfo));
+        },
+      });
+
+      await refreshRevenueCatState();
+    } catch {
+      Alert.alert(t("pro.genericErrorTitle"), t("pro.customerCenterError"));
+    } finally {
+      setIsRevenueCatLoading(false);
+    }
+  };
+
+  const showProUpsell = (source: ProUpsellSource) => {
+    if (!isRevenueCatEnabled) {
+      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
+      return;
+    }
+
+    const sourceTitle =
+      source === "ai"
+        ? t("pro.upsellSourceAi")
+        : source === "insights"
+          ? t("pro.upsellSourceInsights")
+          : source === "export"
+            ? t("pro.upsellSourceExport")
+            : source === "health_sync"
+              ? t("pro.upsellSourceHealth")
+              : t("pro.upsellSourcePasscode");
+
+    Alert.alert(
+      t("pro.upsellTitle", { source: sourceTitle }),
+      t("pro.upsellDescription"),
+      [
+        {
+          text: t("pro.upsellLater"),
+          style: "cancel",
+        },
+        {
+          text: t("pro.upsellOpenPaywall"),
+          onPress: () => {
+            void handlePresentPaywall(true);
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSaveDailyCheckin = () => {
+    const entryDate = startOfDay(new Date()).toISOString();
+    const nextEntry: SymptomLogEntry = {
+      id: `log-${Date.now()}`,
+      dateISO: entryDate,
+      flowKey: selectedFlow,
+      moods: selectedMoods,
+    };
+
+    setSymptomLogs((currentLogs) => {
+      const withoutToday = currentLogs.filter((entry) => entry.dateISO !== entryDate);
+      return [...withoutToday, nextEntry].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    });
+
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(t("tips.savedTitle"), t("tips.savedDescription"));
+  };
+
+  const handleExportCycleData = async () => {
+    if (!isPro) {
+      showProUpsell("export");
+      return;
+    }
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      profile: {
+        name,
+        goals,
+        cycleLength,
+        periodLength,
+        lastPeriodDate: lastPeriodDate.toISOString(),
+      },
+      symptomLogs,
+      aiMessages,
+    };
+
+    await Share.share({
+      message: JSON.stringify(payload, null, 2),
+    });
+  };
+
   const handlePeriodStartsToday = () => {
     const today = startOfDay(new Date());
     setLastPeriodDate(today);
@@ -1125,9 +1596,14 @@ export default function Index() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const sendAiMessage = (messageText: string) => {
+  const sendAiMessage = async (messageText: string) => {
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage || isAiTyping) {
+      return;
+    }
+
+    if (isAiLockedForFree) {
+      showProUpsell("ai");
       return;
     }
 
@@ -1137,16 +1613,59 @@ export default function Index() {
       text: trimmedMessage,
     };
 
+    const aiHistoryForPrompt = aiMessages
+      .filter((message) => message.id !== "assistant-welcome")
+      .slice(-8)
+      .map((message) => ({
+        role: message.role,
+        content: message.text,
+      }));
+
     setAiMessages((currentMessages) => [...currentMessages, userMessage]);
     setAiInput("");
     setIsAiTyping(true);
-
-    if (aiTypingTimeoutRef.current) {
-      clearTimeout(aiTypingTimeoutRef.current);
+    if (!isPro) {
+      setAiUsageCount((currentCount) => currentCount + 1);
     }
 
-    aiTypingTimeoutRef.current = setTimeout(() => {
-      const responseText = buildAiAssistantReply(
+    const goalLine = goals.length > 0
+      ? goals
+        .map((goal) => {
+          const found = GOAL_OPTIONS.find((option) => option.id === goal);
+          return found ? t(found.labelKey) : goal;
+        })
+        .join(", ")
+      : t("ai.generalCycleTracking");
+
+    const assistantSystemPrompt = [
+      "You are a menstrual and cycle wellness assistant in a mobile app.",
+      "Give practical, compassionate, non-judgmental guidance.",
+      "Do not provide diagnosis. For severe symptoms, suggest contacting a clinician.",
+      `Reply in language code: ${i18n.language}.`,
+      `Cycle length: ${cycleLength}. Period length: ${periodLength}.`,
+      `Next period starts in ${cycleContext.daysUntilNextPeriod} days (${cycleContext.nextPeriodStart.toISOString()}).`,
+      `Next ovulation in ${cycleContext.daysUntilOvulation} days (${cycleContext.nextOvulationDate.toISOString()}).`,
+      `Fertility window: ${cycleContext.fertilityStartDate.toISOString()} - ${cycleContext.fertilityEndDate.toISOString()}.`,
+      `User goals: ${goalLine}.`,
+      "Keep answers concise (3-6 sentences) unless user asks for detail.",
+    ].join(" ");
+
+    let responseText = "";
+
+    try {
+      responseText = await getOpenRouterChatReply([
+        {
+          role: "system",
+          content: assistantSystemPrompt,
+        },
+        ...aiHistoryForPrompt,
+        {
+          role: "user",
+          content: trimmedMessage,
+        },
+      ]);
+    } catch {
+      const fallbackText = buildAiAssistantReply(
         trimmedMessage,
         cycleContext,
         cycleLength,
@@ -1155,17 +1674,17 @@ export default function Index() {
         t,
         dateLocale,
       );
+      responseText = `${t("ai.fallbackNotice")}\n\n${fallbackText}`;
+    }
 
-      const assistantMessage: AiMessage = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        text: responseText,
-      };
+    const assistantMessage: AiMessage = {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      text: responseText,
+    };
 
-      setAiMessages((currentMessages) => [...currentMessages, assistantMessage]);
-      setIsAiTyping(false);
-      aiTypingTimeoutRef.current = null;
-    }, 850);
+    setAiMessages((currentMessages) => [...currentMessages, assistantMessage]);
+    setIsAiTyping(false);
   };
 
   const stopBreathingSession = (nextPhase: BreathPhase = "ready") => {
@@ -1608,6 +2127,13 @@ export default function Index() {
               );
             })}
           </View>
+
+          <TouchableOpacity
+            style={styles.saveCheckinButton}
+            onPress={handleSaveDailyCheckin}>
+            <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+            <Text style={styles.saveCheckinButtonText}>{t("tips.saveToday")}</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.tipsSectionWrap}>
@@ -1841,6 +2367,43 @@ export default function Index() {
           </View>
         </View>
 
+        <View style={styles.proInsightsCard}>
+          <View style={styles.proInsightsHeader}>
+            <Text style={styles.proInsightsTitle}>{t("pro.advancedInsightsTitle")}</Text>
+            <MaterialCommunityIcons name="star-four-points" size={18} color="#8F72C5" />
+          </View>
+
+          {isPro ? (
+            <>
+              <Text style={styles.proInsightsText}>
+                {t("pro.insightsLogs", { count: proInsightsSummary.logsCount })}
+              </Text>
+              <Text style={styles.proInsightsText}>
+                {t("pro.insightsDiscomfort", { count: proInsightsSummary.highDiscomfortDays })}
+              </Text>
+              <Text style={styles.proInsightsText}>
+                {t("pro.insightsTopMood", {
+                  mood: proInsightsSummary.topMoodKey ? t(proInsightsSummary.topMoodKey) : t("pro.noData"),
+                })}
+              </Text>
+              <Text style={styles.proInsightsText}>
+                {t("pro.insightsTopFlow", {
+                  flow: proInsightsSummary.topFlowKey ? t(`flow.${proInsightsSummary.topFlowKey}`) : t("pro.noData"),
+                })}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.proInsightsLockedText}>{t("pro.lockedDescription")}</Text>
+              <TouchableOpacity
+                style={styles.proInsightsUnlockButton}
+                onPress={() => showProUpsell("insights")}>
+                <Text style={styles.proInsightsUnlockText}>{t("pro.unlockButton")}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
         <View style={styles.overviewCard}>
           <Text style={styles.overviewTitle}>{t("insights.cycleOverview", { year: new Date().getFullYear() })}</Text>
           <Text style={styles.infoFootnote}>{t("insights.overviewFootnote")}</Text>
@@ -1895,6 +2458,19 @@ export default function Index() {
           </View>
         </LinearGradient>
 
+        <View style={styles.aiQuotaCard}>
+          <Text style={styles.aiQuotaTitle}>
+            {isPro
+              ? t("pro.activePlan")
+              : t("pro.aiDailyRemaining", { count: freeAiRemaining, total: FREE_AI_DAILY_LIMIT })}
+          </Text>
+          {!isPro && (
+            <TouchableOpacity onPress={() => showProUpsell("ai")}>
+              <Text style={styles.aiQuotaUpgradeText}>{t("pro.unlockButton")}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1943,13 +2519,14 @@ export default function Index() {
             placeholderTextColor="#9A8BA0"
             style={styles.aiInput}
             returnKeyType="send"
+            editable={!isAiLockedForFree}
             onSubmitEditing={() => sendAiMessage(aiInput)}
           />
 
           <TouchableOpacity
-            style={[styles.aiSendButton, (!aiInput.trim() || isAiTyping) && styles.aiSendButtonDisabled]}
+            style={[styles.aiSendButton, (!aiInput.trim() || isAiTyping || isAiLockedForFree) && styles.aiSendButtonDisabled]}
             onPress={() => sendAiMessage(aiInput)}
-            disabled={!aiInput.trim() || isAiTyping}>
+            disabled={!aiInput.trim() || isAiTyping || isAiLockedForFree}>
             <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -1965,6 +2542,12 @@ export default function Index() {
           return found ? t(found.labelKey) : g;
         }).join(", ")
       : t("goals.cycleTracking");
+
+    const subscriptionPlans: { id: RevenueCatPlanId; label: string }[] = [
+      { id: "monthly", label: t("pro.planMonthly") },
+      { id: "yearly", label: t("pro.planYearly") },
+      { id: "lifetime", label: t("pro.planLifetime") },
+    ];
 
     if (profileView === "settings") {
       return (
@@ -2017,7 +2600,13 @@ export default function Index() {
               </View>
               <Switch
                 value={pinLockEnabled}
-                onValueChange={setPinLockEnabled}
+                onValueChange={(nextValue) => {
+                  if (!isPro && nextValue) {
+                    showProUpsell("passcode");
+                    return;
+                  }
+                  setPinLockEnabled(nextValue);
+                }}
                 trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
                 thumbColor="#FFFFFF"
               />
@@ -2034,7 +2623,13 @@ export default function Index() {
               </View>
               <Switch
                 value={healthSyncEnabled}
-                onValueChange={setHealthSyncEnabled}
+                onValueChange={(nextValue) => {
+                  if (!isPro && nextValue) {
+                    showProUpsell("health_sync");
+                    return;
+                  }
+                  setHealthSyncEnabled(nextValue);
+                }}
                 trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
                 thumbColor="#FFFFFF"
               />
@@ -2052,7 +2647,17 @@ export default function Index() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingsNavRow}>
+            <TouchableOpacity
+              style={styles.settingsNavRow}
+              onPress={openSubscriptionModal}>
+              <Text style={styles.settingsRowTitle}>{t("pro.managePlan")}</Text>
+              <View style={styles.settingsNavRight}>
+                <Text style={styles.settingsNavValue}>{isPro ? t("pro.activeShort") : t("pro.freeShort")}</Text>
+                <Ionicons name="chevron-forward" size={16} color="#85788A" />
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingsNavRow} onPress={handleExportCycleData}>
               <Text style={styles.settingsRowTitle}>{t("settings.exportCycleData")}</Text>
               <Ionicons name="chevron-forward" size={16} color="#85788A" />
             </TouchableOpacity>
@@ -2099,6 +2704,74 @@ export default function Index() {
               </View>
             </Pressable>
           </Modal>
+
+          <Modal
+            visible={isSubscriptionModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setIsSubscriptionModalVisible(false)}>
+            <Pressable style={styles.subscriptionModalOverlay} onPress={() => setIsSubscriptionModalVisible(false)}>
+              <Pressable style={styles.subscriptionModalCard} onPress={() => null}>
+                <Text style={styles.subscriptionModalTitle}>{t("pro.managePlan")}</Text>
+                <Text style={styles.subscriptionModalSubtitle}>{isPro ? t("pro.activePlan") : t("pro.freePlan")}</Text>
+
+                {subscriptionPlans.map((plan) => {
+                  const revenueCatPackage = revenueCatPackages[plan.id];
+                  return (
+                    <TouchableOpacity
+                      key={plan.id}
+                      style={[styles.subscriptionPlanButton, !revenueCatPackage && styles.subscriptionPlanButtonDisabled]}
+                      disabled={!revenueCatPackage || isRevenueCatLoading}
+                      onPress={() => {
+                        void handlePurchasePlan(plan.id);
+                      }}>
+                      <View>
+                        <Text style={styles.subscriptionPlanTitle}>{plan.label}</Text>
+                        <Text style={styles.subscriptionPlanPrice}>
+                          {revenueCatPackage?.product.priceString ?? t("pro.planUnavailable")}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#85788A" />
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <TouchableOpacity
+                  style={styles.subscriptionActionButton}
+                  disabled={isRevenueCatLoading}
+                  onPress={() => {
+                    void handlePresentPaywall(false);
+                  }}>
+                  <Text style={styles.subscriptionActionButtonText}>{t("pro.openPaywall")}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.subscriptionActionButton}
+                  disabled={isRevenueCatLoading}
+                  onPress={() => {
+                    void handleRestoreSubscription();
+                  }}>
+                  <Text style={styles.subscriptionActionButtonText}>{t("pro.restorePurchases")}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.subscriptionActionButton}
+                  disabled={isRevenueCatLoading}
+                  onPress={() => {
+                    void handleOpenCustomerCenter();
+                  }}>
+                  <Text style={styles.subscriptionActionButtonText}>{t("pro.openCustomerCenter")}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.subscriptionCloseButton}
+                  disabled={isRevenueCatLoading}
+                  onPress={() => setIsSubscriptionModalVisible(false)}>
+                  <Text style={styles.subscriptionCloseButtonText}>{t("pro.close")}</Text>
+                </TouchableOpacity>
+              </Pressable>
+            </Pressable>
+          </Modal>
         </ScrollView>
       );
     }
@@ -2113,6 +2786,7 @@ export default function Index() {
             <View>
               <Text style={styles.profileName}>{profileName}</Text>
               <Text style={styles.profileMetaText}>{profileGoals}</Text>
+              <Text style={styles.profilePlanText}>{isPro ? t("pro.activePlan") : t("pro.freePlan")}</Text>
             </View>
           </View>
 
@@ -2221,6 +2895,17 @@ export default function Index() {
     return renderProfileTab();
   };
 
+  if (!isHydrated) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <DecorativeBackground />
+        <View style={styles.hydrationWrap}>
+          <Text style={styles.hydrationText}>{t("common.loading")}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!isOnboardingDone) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -2291,6 +2976,16 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#FFF9FC",
+  },
+  hydrationWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hydrationText: {
+    color: "#5E5264",
+    fontSize: 16,
+    fontWeight: "600",
   },
   decorLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -3021,6 +3716,49 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontWeight: "600",
   },
+  proInsightsCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E6D9EA",
+    backgroundColor: "#FFFDFE",
+    padding: 14,
+    gap: 6,
+    marginTop: 2,
+  },
+  proInsightsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  proInsightsTitle: {
+    color: "#2F2436",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  proInsightsText: {
+    color: "#5C4F64",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  proInsightsLockedText: {
+    color: "#7A6D7F",
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  proInsightsUnlockButton: {
+    alignSelf: "flex-start",
+    borderRadius: 16,
+    backgroundColor: "#8F72C5",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  proInsightsUnlockText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   aiPageWrap: {
     flex: 1,
     gap: 10,
@@ -3057,6 +3795,27 @@ const styles = StyleSheet.create({
   },
   aiStatusChipText: {
     color: "#5D4193",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  aiQuotaCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E1D4E5",
+    backgroundColor: "#FFFFFFF0",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  aiQuotaTitle: {
+    color: "#55495D",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  aiQuotaUpgradeText: {
+    color: "#7F5DBE",
     fontSize: 12,
     fontWeight: "700",
   },
@@ -3251,6 +4010,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
+  profilePlanText: {
+    color: "#7E63B2",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
   profileSettingsIconButton: {
     width: 40,
     height: 40,
@@ -3411,6 +4176,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  saveCheckinButton: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    borderRadius: 18,
+    backgroundColor: "#8F72C5",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  saveCheckinButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
   moodChip: {
     minWidth: "31%",
@@ -3710,5 +4491,81 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#85788A",
     fontWeight: "600",
+  },
+  subscriptionModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  subscriptionModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    padding: 18,
+    gap: 10,
+  },
+  subscriptionModalTitle: {
+    color: "#2F2436",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  subscriptionModalSubtitle: {
+    color: "#7D6F81",
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  subscriptionPlanButton: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E5D9E8",
+    backgroundColor: "#FAF7FC",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  subscriptionPlanButtonDisabled: {
+    opacity: 0.5,
+  },
+  subscriptionPlanTitle: {
+    color: "#3F3346",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  subscriptionPlanPrice: {
+    color: "#877A8A",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  subscriptionActionButton: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#DED1E3",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  subscriptionActionButtonText: {
+    color: "#5D4193",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  subscriptionCloseButton: {
+    marginTop: 4,
+    borderRadius: 14,
+    backgroundColor: "#8F72C5",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  subscriptionCloseButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
 });
