@@ -23,17 +23,23 @@ const DEFAULT_PACKAGES: RevenueCatPackagesMap = {
   lifetime: null,
 };
 
-const ENTITLEMENT_ID = process.env.EXPO_PUBLIC_RC_PRO_ENTITLEMENT ?? "lunella_pro";
+const DEFAULT_ENTITLEMENT_ID = "lunella_pro";
+const ENTITLEMENT_ID = (process.env.EXPO_PUBLIC_RC_PRO_ENTITLEMENT ?? "").trim() || DEFAULT_ENTITLEMENT_ID;
 
 let isConfigured = false;
 
+function sanitizeEnvValue(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function getPlatformApiKey(): string | null {
   if (Platform.OS === "ios") {
-    return process.env.EXPO_PUBLIC_RC_IOS_API_KEY ?? null;
+    return sanitizeEnvValue(process.env.EXPO_PUBLIC_RC_IOS_API_KEY);
   }
 
   if (Platform.OS === "android") {
-    return process.env.EXPO_PUBLIC_RC_ANDROID_API_KEY ?? null;
+    return sanitizeEnvValue(process.env.EXPO_PUBLIC_RC_ANDROID_API_KEY);
   }
 
   return null;
@@ -56,7 +62,26 @@ export function isRevenueCatReady(): boolean {
 }
 
 export function hasLunellaProEntitlement(customerInfo: CustomerInfo | null | undefined): boolean {
-  return Boolean(customerInfo?.entitlements.active[ENTITLEMENT_ID]);
+  if (!customerInfo) {
+    return false;
+  }
+
+  if (customerInfo.entitlements.active[ENTITLEMENT_ID]) {
+    return true;
+  }
+
+  const activeEntitlementIds = Object.keys(customerInfo.entitlements.active);
+  if (activeEntitlementIds.length === 1) {
+    if (__DEV__) {
+      console.warn(
+        `[RevenueCat] Expected entitlement "${ENTITLEMENT_ID}" but found "${activeEntitlementIds[0]}". ` +
+        "Treating single active entitlement as Pro.",
+      );
+    }
+    return true;
+  }
+
+  return false;
 }
 
 export function getPackagesFromOffering(offering: PurchasesOffering | null): RevenueCatPackagesMap {
@@ -64,22 +89,35 @@ export function getPackagesFromOffering(offering: PurchasesOffering | null): Rev
     return { ...DEFAULT_PACKAGES };
   }
 
+  const findByIdentifier = (identifiers: string[]): PurchasesPackage | null => {
+    return (
+      offering.availablePackages.find((pkg) =>
+        identifiers.includes(pkg.identifier.toLowerCase()),
+      ) ?? null
+    );
+  };
+
+  const findByPackageType = (
+    packageTypes: ((typeof Purchases.PACKAGE_TYPE)[keyof typeof Purchases.PACKAGE_TYPE])[],
+  ): PurchasesPackage | null => {
+    return offering.availablePackages.find((pkg) => packageTypes.includes(pkg.packageType)) ?? null;
+  };
+
   const packages = { ...DEFAULT_PACKAGES };
-  offering.availablePackages.forEach((availablePackage) => {
-    if (availablePackage.identifier === "monthly") {
-      packages.monthly = availablePackage;
-      return;
-    }
+  packages.monthly =
+    offering.monthly ??
+    findByPackageType([Purchases.PACKAGE_TYPE.MONTHLY]) ??
+    findByIdentifier(["monthly", "$rc_monthly"]);
 
-    if (availablePackage.identifier === "yearly") {
-      packages.yearly = availablePackage;
-      return;
-    }
+  packages.yearly =
+    offering.annual ??
+    findByPackageType([Purchases.PACKAGE_TYPE.ANNUAL]) ??
+    findByIdentifier(["yearly", "annual", "$rc_annual"]);
 
-    if (availablePackage.identifier === "lifetime") {
-      packages.lifetime = availablePackage;
-    }
-  });
+  packages.lifetime =
+    offering.lifetime ??
+    findByPackageType([Purchases.PACKAGE_TYPE.LIFETIME]) ??
+    findByIdentifier(["lifetime", "$rc_lifetime"]);
 
   return packages;
 }
@@ -93,8 +131,21 @@ export function isRevenueCatUserCancelledError(error: unknown): boolean {
   return Boolean(err.userCancelled);
 }
 
+export function isRevenueCatAlreadyPurchasedError(error: unknown): boolean {
+  if (typeof error !== "object" || !error) {
+    return false;
+  }
+
+  const err = error as { code?: string };
+  return (
+    err.code === Purchases.PURCHASES_ERROR_CODE.PRODUCT_ALREADY_PURCHASED_ERROR ||
+    err.code === Purchases.PURCHASES_ERROR_CODE.RECEIPT_ALREADY_IN_USE_ERROR
+  );
+}
+
 export async function initializeRevenueCat(appUserId?: string): Promise<boolean> {
   const apiKey = getPlatformApiKey();
+  const normalizedAppUserId = sanitizeEnvValue(appUserId);
 
   if (!apiKey) {
     return false;
@@ -104,22 +155,28 @@ export async function initializeRevenueCat(appUserId?: string): Promise<boolean>
     return false;
   }
 
-  if (!isConfigured) {
+  const alreadyConfigured = isConfigured || (await Purchases.isConfigured());
+
+  if (!alreadyConfigured) {
     if (__DEV__) {
       await Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
     }
 
     Purchases.configure({
       apiKey,
-      appUserID: appUserId,
+      appUserID: normalizedAppUserId ?? undefined,
     });
 
     isConfigured = true;
-    return true;
+  } else {
+    isConfigured = true;
   }
 
-  if (appUserId) {
-    await Purchases.logIn(appUserId);
+  if (normalizedAppUserId) {
+    const currentAppUserId = await Purchases.getAppUserID();
+    if (currentAppUserId !== normalizedAppUserId) {
+      await Purchases.logIn(normalizedAppUserId);
+    }
   }
 
   return true;
@@ -165,6 +222,19 @@ export async function restoreRevenueCatPurchases(): Promise<CustomerInfo> {
   }
 
   return Purchases.restorePurchases();
+}
+
+export async function syncRevenueCatPurchases(): Promise<CustomerInfo | null> {
+  if (!(await ensureConfigured())) {
+    return null;
+  }
+
+  try {
+    const result = await Purchases.syncPurchasesForResult();
+    return result.customerInfo;
+  } catch {
+    return null;
+  }
 }
 
 export async function presentRevenueCatPaywallIfNeeded(

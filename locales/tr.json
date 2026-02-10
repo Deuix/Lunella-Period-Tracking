@@ -134,7 +134,20 @@
     "helpfulTips": "Kızlar için faydalı ipuçları",
     "saveToday": "Bugün kaydı kaydet",
     "savedTitle": "Kaydedildi",
-    "savedDescription": "Bugünkü kayıt analizlere eklendi."
+    "savedDescription": "Bugünkü kayıt analizlere eklendi.",
+    "savedWithMoods": "{{count}} ruh hali ile kaydedildi.",
+    "viewHistory": "Geçmişi Görüntüle",
+    "checkInHistory": "Kayıt Geçmişi",
+    "noCheckInsYet": "Henüz kayıt yok",
+    "startTrackingToday": "Günlük akış ve ruh hallerinizi kaydetmeye başlayın",
+    "moods": "Ruh Halleri",
+    "delete": "Sil",
+    "deleteCheckIn": "Kaydı Sil",
+    "deleteCheckInConfirm": "Bu kaydı silmek istediğinizden emin misiniz?",
+    "validationTitle": "Eksik Bilgi",
+    "validationFlowRequired": "Lütfen kaydetmeden önce regl akışınızı seçin.",
+    "alreadyCheckedIn": "✓ Bugünün kaydı kaydedildi",
+    "viewOrEdit": "Görüntüle veya Düzenle"
   },
   "insights": {
     "cycleStatistics": "Döngü İstatistikleri",

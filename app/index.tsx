@@ -39,6 +39,8 @@ import {
   presentRevenueCatPaywallIfNeeded,
   purchaseRevenueCatPackage,
   restoreRevenueCatPurchases,
+  isRevenueCatAlreadyPurchasedError,
+  syncRevenueCatPurchases,
   type RevenueCatPackagesMap,
   type RevenueCatPlanId,
 } from "../services/revenuecat";
@@ -631,6 +633,7 @@ export default function Index() {
   const [isRevenueCatEnabled, setIsRevenueCatEnabled] = useState(false);
   const [isSubscriptionModalVisible, setIsSubscriptionModalVisible] = useState(false);
   const [isRevenueCatLoading, setIsRevenueCatLoading] = useState(false);
+  const [isProSuccessVisible, setIsProSuccessVisible] = useState(false);
   const [revenueCatPackages, setRevenueCatPackages] = useState<RevenueCatPackagesMap>(EMPTY_REVENUECAT_PACKAGES);
 
   const [name, setName] = useState("");
@@ -659,6 +662,7 @@ export default function Index() {
   const [aiUsageCount, setAiUsageCount] = useState(0);
   const [aiMessages, setAiMessages] = useState<AiMessage[]>(INITIAL_AI_MESSAGES);
   const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
+  const [checkInHistoryVisible, setCheckInHistoryVisible] = useState(false);
 
   const monthOptions = useMemo(() => {
     const base = startOfMonth(new Date());
@@ -756,13 +760,21 @@ export default function Index() {
       return;
     }
 
-    const [customerInfo, offerings] = await Promise.all([
-      getRevenueCatCustomerInfo(),
-      getRevenueCatOfferings(),
-    ]);
+    try {
+      const [customerInfo, offerings] = await Promise.all([
+        getRevenueCatCustomerInfo(),
+        getRevenueCatOfferings(),
+      ]);
 
-    setIsPro(hasLunellaProEntitlement(customerInfo));
-    setRevenueCatPackages(getPackagesFromOffering(offerings?.current ?? null));
+      if (customerInfo) {
+        setIsPro(hasLunellaProEntitlement(customerInfo));
+      }
+      setRevenueCatPackages(getPackagesFromOffering(offerings?.current ?? null));
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("RevenueCat refresh failed", error);
+      }
+    }
   }, [isRevenueCatEnabled]);
 
   useEffect(() => {
@@ -782,7 +794,9 @@ export default function Index() {
           getRevenueCatOfferings(),
         ]);
 
-        setIsPro(hasLunellaProEntitlement(customerInfo));
+        if (customerInfo) {
+          setIsPro(hasLunellaProEntitlement(customerInfo));
+        }
         setRevenueCatPackages(getPackagesFromOffering(offerings?.current ?? null));
 
         unsubscribe = addRevenueCatCustomerInfoListener((updatedInfo) => {
@@ -1345,7 +1359,12 @@ export default function Index() {
       return;
     }
 
-    setIsSubscriptionModalVisible(true);
+    if (isPro) {
+      void handleOpenCustomerCenter();
+      return;
+    }
+
+    void handlePresentPaywall(false);
   };
 
   const handlePresentPaywall = async (ifNeeded = true) => {
@@ -1363,7 +1382,16 @@ export default function Index() {
       }
 
       const customerInfo = await getRevenueCatCustomerInfo();
-      const unlocked = hasLunellaProEntitlement(customerInfo);
+      let unlocked = hasLunellaProEntitlement(customerInfo);
+
+      if (!unlocked) {
+        const syncedCustomerInfo = await syncRevenueCatPurchases();
+        unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? customerInfo);
+      }
+
+      if (unlocked && !isPro) {
+        setIsProSuccessVisible(true);
+      }
       setIsPro(unlocked);
       await refreshRevenueCatState();
 
@@ -1393,7 +1421,16 @@ export default function Index() {
     setIsRevenueCatLoading(true);
     try {
       const purchaseResult = await purchaseRevenueCatPackage(selectedPackage);
-      const unlocked = hasLunellaProEntitlement(purchaseResult.customerInfo);
+      let unlocked = hasLunellaProEntitlement(purchaseResult.customerInfo);
+
+      if (!unlocked) {
+        const syncedCustomerInfo = await syncRevenueCatPurchases();
+        unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? purchaseResult.customerInfo);
+      }
+
+      if (unlocked && !isPro) {
+        setIsProSuccessVisible(true);
+      }
       setIsPro(unlocked);
 
       if (unlocked) {
@@ -1401,9 +1438,35 @@ export default function Index() {
         setIsSubscriptionModalVisible(false);
       }
     } catch (error) {
-      if (!isRevenueCatUserCancelledError(error)) {
-        Alert.alert(t("pro.genericErrorTitle"), t("pro.purchaseError"));
+      if (isRevenueCatUserCancelledError(error)) {
+        return;
       }
+
+      if (isRevenueCatAlreadyPurchasedError(error)) {
+        try {
+          const restoredInfo = await restoreRevenueCatPurchases();
+          let unlocked = hasLunellaProEntitlement(restoredInfo);
+
+          if (!unlocked) {
+            const syncedCustomerInfo = await syncRevenueCatPurchases();
+            unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? restoredInfo);
+          }
+
+          if (unlocked && !isPro) {
+            setIsProSuccessVisible(true);
+          }
+          setIsPro(unlocked);
+          if (unlocked) {
+            Alert.alert(t("pro.purchaseSuccessTitle"), t("pro.purchaseSuccessDescription"));
+            setIsSubscriptionModalVisible(false);
+            return;
+          }
+        } catch {
+          // Falls through to generic purchase error.
+        }
+      }
+
+      Alert.alert(t("pro.genericErrorTitle"), t("pro.purchaseError"));
     } finally {
       setIsRevenueCatLoading(false);
       await refreshRevenueCatState();
@@ -1419,8 +1482,22 @@ export default function Index() {
     setIsRevenueCatLoading(true);
     try {
       const customerInfo = await restoreRevenueCatPurchases();
-      setIsPro(hasLunellaProEntitlement(customerInfo));
-      Alert.alert(t("pro.restoreSuccessTitle"), t("pro.restoreSuccessDescription"));
+      let unlocked = hasLunellaProEntitlement(customerInfo);
+
+      if (!unlocked) {
+        const syncedCustomerInfo = await syncRevenueCatPurchases();
+        unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? customerInfo);
+      }
+
+      if (unlocked && !isPro) {
+        setIsProSuccessVisible(true);
+      }
+      setIsPro(unlocked);
+      if (unlocked) {
+        Alert.alert(t("pro.restoreSuccessTitle"), t("pro.restoreSuccessDescription"));
+      } else {
+        Alert.alert(t("pro.genericErrorTitle"), t("pro.restoreError"));
+      }
     } catch {
       Alert.alert(t("pro.genericErrorTitle"), t("pro.restoreError"));
     } finally {
@@ -1439,7 +1516,11 @@ export default function Index() {
     try {
       await presentRevenueCatCustomerCenter({
         onRestoreCompleted: ({ customerInfo }) => {
-          setIsPro(hasLunellaProEntitlement(customerInfo));
+          const unlocked = hasLunellaProEntitlement(customerInfo);
+          if (unlocked && !isPro) {
+            setIsProSuccessVisible(true);
+          }
+          setIsPro(unlocked);
         },
       });
 
@@ -1487,6 +1568,12 @@ export default function Index() {
   };
 
   const handleSaveDailyCheckin = () => {
+    // Validate that at least flow is selected
+    if (!selectedFlow) {
+      Alert.alert(t("tips.validationTitle"), t("tips.validationFlowRequired"));
+      return;
+    }
+
     const entryDate = startOfDay(new Date()).toISOString();
     const nextEntry: SymptomLogEntry = {
       id: `log-${Date.now()}`,
@@ -1497,11 +1584,28 @@ export default function Index() {
 
     setSymptomLogs((currentLogs) => {
       const withoutToday = currentLogs.filter((entry) => entry.dateISO !== entryDate);
-      return [...withoutToday, nextEntry].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      const updated = [...withoutToday, nextEntry].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      console.log("Saving check-in:", nextEntry);
+      console.log("Updated logs:", updated);
+      return updated;
     });
 
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(t("tips.savedTitle"), t("tips.savedDescription"));
+
+    // Show success message with option to view history
+    const moodCount = selectedMoods.length;
+    const message = moodCount > 0
+      ? `${t("tips.savedDescription")} ${t("tips.savedWithMoods", { count: moodCount })}`
+      : t("tips.savedDescription");
+
+    Alert.alert(
+      t("tips.savedTitle"),
+      message,
+      [
+        { text: "OK", style: "cancel" },
+        { text: t("tips.viewHistory"), onPress: () => setCheckInHistoryVisible(true) }
+      ]
+    );
   };
 
   const handleExportCycleData = async () => {
@@ -1533,11 +1637,26 @@ export default function Index() {
     setLastPeriodDate(today);
     setSelectedCalendarDate(today);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Show confirmation
+    Alert.alert(
+      t("home.periodStartsToday"),
+      `${t("onboarding.lastPeriodDate", { date: today.toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" }) })}`,
+      [{ text: "OK" }]
+    );
   };
 
   const handleSetAsPeriodStart = (date: Date) => {
-    setLastPeriodDate(startOfDay(date));
+    const normalizedDate = startOfDay(date);
+    setLastPeriodDate(normalizedDate);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Show confirmation
+    Alert.alert(
+      t("home.setAsPeriodStart"),
+      `${t("onboarding.lastPeriodDate", { date: normalizedDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" }) })}`,
+      [{ text: "OK" }]
+    );
   };
 
   const sendAiMessage = async (messageText: string) => {
@@ -1921,9 +2040,18 @@ export default function Index() {
               })}
             </Text>
           </View>
-          <TouchableOpacity style={styles.profileAvatar} onPress={() => setActiveTab("profile")}>
-            <Text style={styles.profileAvatarText}>{(name.trim()[0] ?? "U").toUpperCase()}</Text>
-          </TouchableOpacity>
+          <View style={styles.profileAvatarWrap}>
+            <TouchableOpacity style={styles.profileAvatar} onPress={() => setActiveTab("profile")}>
+              <Text style={styles.profileAvatarText}>{(name.trim()[0] ?? "U").toUpperCase()}</Text>
+            </TouchableOpacity>
+            {isPro && (
+              <View style={styles.homeProBadgeWrap}>
+                <View style={styles.homeProBadge}>
+                  <Text style={styles.homeProBadgeText}>{t("pro.activeShort")}</Text>
+                </View>
+              </View>
+            )}
+          </View>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.insightRow}>
@@ -2039,10 +2167,25 @@ export default function Index() {
 
   const renderTipsTab = () => {
     const feelingName = name.trim() || "Gul";
+    const todayISO = startOfDay(new Date()).toISOString();
+    const todayCheckIn = symptomLogs.find((log) => log.dateISO === todayISO);
+    const hasTodayCheckIn = !!todayCheckIn;
 
     return (
       <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>{t("tips.sectionTitle")}</Text>
+
+        {hasTodayCheckIn && (
+          <View style={styles.todayCheckInBanner}>
+            <View style={styles.todayCheckInBannerHeader}>
+              <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+              <Text style={styles.todayCheckInBannerText}>{t("tips.alreadyCheckedIn")}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setCheckInHistoryVisible(true)}>
+              <Text style={styles.todayCheckInBannerLink}>{t("tips.viewOrEdit")}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.infoCard}>
           <View style={styles.flowCard}>
@@ -2101,6 +2244,15 @@ export default function Index() {
             onPress={handleSaveDailyCheckin}>
             <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
             <Text style={styles.saveCheckinButtonText}>{t("tips.saveToday")}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.viewHistoryButton}
+            onPress={() => setCheckInHistoryVisible(true)}>
+            <Ionicons name="calendar-outline" size={18} color="#8F72C5" />
+            <Text style={styles.viewHistoryButtonText}>
+              {t("tips.viewHistory")} {symptomLogs.length > 0 && `(${symptomLogs.length})`}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -2376,7 +2528,7 @@ export default function Index() {
           <Text style={styles.overviewTitle}>{t("insights.cycleOverview", { year: new Date().getFullYear() })}</Text>
           <Text style={styles.infoFootnote}>{t("insights.overviewFootnote")}</Text>
 
-          <View style={styles.historyList}>
+          <View style={styles.insightsHistoryList}>
             {monthlyInsights
               .slice()
               .reverse()
@@ -2687,6 +2839,120 @@ export default function Index() {
           </Modal>
 
           <Modal
+            visible={checkInHistoryVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setCheckInHistoryVisible(false)}>
+            <Pressable style={styles.historyModalOverlay} onPress={() => setCheckInHistoryVisible(false)}>
+              <Pressable style={styles.historyModalContent} onPress={() => null}>
+                <View style={styles.historyModalHeader}>
+                  <Text style={styles.historyModalTitle}>{t("tips.checkInHistory")}</Text>
+                  <TouchableOpacity onPress={() => setCheckInHistoryVisible(false)}>
+                    <Ionicons name="close-circle" size={28} color="#8F72C5" />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
+                  {symptomLogs.length === 0 ? (
+                    <View style={styles.emptyHistoryContainer}>
+                      <MaterialCommunityIcons name="calendar-blank" size={64} color="#D1C4E9" />
+                      <Text style={styles.emptyHistoryText}>{t("tips.noCheckInsYet")}</Text>
+                      <Text style={styles.emptyHistorySubtext}>{t("tips.startTrackingToday")}</Text>
+                    </View>
+                  ) : (
+                    [...symptomLogs]
+                      .sort((a, b) => b.dateISO.localeCompare(a.dateISO))
+                      .map((entry) => {
+                        const entryDate = new Date(entry.dateISO);
+                        const flowOption = MENSTRUAL_FLOW_OPTIONS.find((opt) => opt.key === entry.flowKey);
+                        const todayEntry = isSameDay(entryDate, new Date());
+
+                        return (
+                          <View key={entry.id} style={styles.historyCard}>
+                            <View style={styles.historyCardHeader}>
+                              <View style={styles.historyDateContainer}>
+                                <Text style={styles.historyDateText}>
+                                  {entryDate.toLocaleDateString(dateLocale, {
+                                    weekday: "short",
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </Text>
+                                {todayEntry && (
+                                  <View style={styles.todayBadge}>
+                                    <Text style={styles.todayBadgeText}>{t("home.today")}</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  Alert.alert(
+                                    t("tips.deleteCheckIn"),
+                                    t("tips.deleteCheckInConfirm"),
+                                    [
+                                      { text: t("languagePicker.cancel"), style: "cancel" },
+                                      {
+                                        text: t("tips.delete"),
+                                        style: "destructive",
+                                        onPress: () => {
+                                          setSymptomLogs((logs) => logs.filter((log) => log.id !== entry.id));
+                                          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                        },
+                                      },
+                                    ]
+                                  );
+                                }}>
+                                <Ionicons name="trash-outline" size={20} color="#E57373" />
+                              </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.historyFlowRow}>
+                              <Text style={styles.historyLabel}>{t("tips.menstrualFlow")}:</Text>
+                              <View style={styles.historyFlowContainer}>
+                                {Array.from({ length: flowOption?.drops || 1 }).map((_, index) => (
+                                  <MaterialCommunityIcons
+                                    key={index}
+                                    name="water"
+                                    size={14}
+                                    color="#8F72C5"
+                                  />
+                                ))}
+                                <Text style={styles.historyFlowText}>{flowOption ? t(flowOption.labelKey) : ""}</Text>
+                              </View>
+                            </View>
+
+                            {entry.moods.length > 0 && (
+                              <View style={styles.historyMoodsContainer}>
+                                <Text style={styles.historyLabel}>{t("tips.moods")}:</Text>
+                                <View style={styles.historyMoodsGrid}>
+                                  {entry.moods.map((moodKey) => {
+                                    const moodOption = MOOD_OPTIONS.find((opt) => opt.labelKey === moodKey);
+                                    return moodOption ? (
+                                      <View key={moodKey} style={styles.historyMoodChip}>
+                                        <Text style={styles.historyMoodEmoji}>{moodOption.emoji}</Text>
+                                        <Text style={styles.historyMoodLabel}>{t(moodOption.labelKey)}</Text>
+                                      </View>
+                                    ) : null;
+                                  })}
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })
+                  )}
+                </ScrollView>
+
+                <TouchableOpacity
+                  style={styles.historyCloseButton}
+                  onPress={() => setCheckInHistoryVisible(false)}>
+                  <Text style={styles.historyCloseButtonText}>{t("pro.close")}</Text>
+                </TouchableOpacity>
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <Modal
             visible={isSubscriptionModalVisible}
             transparent
             animationType="fade"
@@ -2949,6 +3215,25 @@ export default function Index() {
           })}
         </View>
       </View>
+
+      <Modal
+        visible={isProSuccessVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsProSuccessVisible(false)}>
+        <Pressable style={styles.proSuccessOverlay} onPress={() => setIsProSuccessVisible(false)}>
+          <Pressable style={styles.proSuccessCard} onPress={() => null}>
+            <View style={styles.proSuccessIconCircle}>
+              <Ionicons name="checkmark" size={28} color="#FFFFFF" />
+            </View>
+            <Text style={styles.proSuccessTitle}>{t("pro.purchaseSuccessTitle")}</Text>
+            <Text style={styles.proSuccessText}>{t("pro.purchaseSuccessDescription")}</Text>
+            <TouchableOpacity style={styles.proSuccessButton} onPress={() => setIsProSuccessVisible(false)}>
+              <Text style={styles.proSuccessButtonText}>{t("pro.close")}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -3464,6 +3749,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 14,
   },
+  profileAvatarWrap: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   profileAvatar: {
     width: 44,
     height: 44,
@@ -3476,6 +3766,26 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "700",
+  },
+  homeProBadge: {
+    borderRadius: 10,
+    backgroundColor: "#F7B84B",
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  homeProBadgeWrap: {
+    position: "absolute",
+    bottom: -4,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  homeProBadgeText: {
+    color: "#4F3A09",
+    fontSize: 10,
+    fontWeight: "800",
   },
   insightRow: {
     paddingHorizontal: 18,
@@ -3640,7 +3950,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "800",
   },
-  historyList: {
+  insightsHistoryList: {
     gap: 8,
   },
   historyRow: {
@@ -4182,6 +4492,191 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
+  todayCheckInBanner: {
+    backgroundColor: "#E8F5E9",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#4CAF50",
+    padding: 12,
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  todayCheckInBannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  todayCheckInBannerText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#2E7D32",
+  },
+  todayCheckInBannerLink: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1976D2",
+    textDecorationLine: "underline",
+  },
+  viewHistoryButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    borderRadius: 18,
+    backgroundColor: "#F0E8FA",
+    borderWidth: 1,
+    borderColor: "#8F72C5",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  viewHistoryButtonText: {
+    color: "#8F72C5",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  historyModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  historyModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    maxHeight: "85%",
+  },
+  historyModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  historyModalTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#2F2436",
+  },
+  historyList: {
+    flex: 1,
+  },
+  emptyHistoryContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  emptyHistoryText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#5E5265",
+    marginTop: 16,
+  },
+  emptyHistorySubtext: {
+    fontSize: 14,
+    color: "#85788A",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  historyCard: {
+    backgroundColor: "#FEFBFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E1D4E2",
+    padding: 16,
+    marginBottom: 12,
+  },
+  historyCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  historyDateContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  historyDateText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#2F2436",
+  },
+  todayBadge: {
+    backgroundColor: "#8F72C5",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  todayBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  historyFlowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  historyLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#5E5265",
+    marginRight: 8,
+  },
+  historyFlowContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  historyFlowText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#8F72C5",
+    marginLeft: 4,
+  },
+  historyMoodsContainer: {
+    marginTop: 8,
+  },
+  historyMoodsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 6,
+  },
+  historyMoodChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0E8FA",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  historyMoodEmoji: {
+    fontSize: 14,
+  },
+  historyMoodLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#5D4193",
+  },
+  historyCloseButton: {
+    backgroundColor: "#8F72C5",
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  historyCloseButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
   moodChip: {
     minWidth: "31%",
     borderRadius: 16,
@@ -4433,6 +4928,60 @@ const styles = StyleSheet.create({
   },
   navTextActive: {
     color: "#614694",
+    fontWeight: "700",
+  },
+  proSuccessOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(18, 10, 26, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  proSuccessCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E8DDEB",
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 10,
+  },
+  proSuccessIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#8F72C5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  proSuccessTitle: {
+    color: "#2F2436",
+    fontSize: 24,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  proSuccessText: {
+    color: "#64576B",
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
+  },
+  proSuccessButton: {
+    marginTop: 6,
+    width: "100%",
+    borderRadius: 16,
+    backgroundColor: "#8F72C5",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+  },
+  proSuccessButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
     fontWeight: "700",
   },
   languageModalOverlay: {
