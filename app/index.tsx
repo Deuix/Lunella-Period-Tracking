@@ -8,9 +8,7 @@ import {
   Alert,
   Animated,
   Easing,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -20,30 +18,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Markdown from "react-native-markdown-display";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getDateLocale, persistLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "../i18n";
-import { streamOpenRouterChatReply } from "../services/openrouter";
+import { getDateLocale, type SupportedLanguage } from "../i18n";
+import { useAiAssistant } from "../features/main-screen/hooks/useAiAssistant";
+import { useRevenueCatPro } from "../features/main-screen/hooks/useRevenueCatPro";
 import {
-  addRevenueCatCustomerInfoListener,
-  getPackagesFromOffering,
-  getRevenueCatCustomerInfo,
-  getRevenueCatOfferings,
-  hasLunellaProEntitlement,
-  initializeRevenueCat,
-  isRevenueCatAlreadyPurchasedError,
-  isRevenueCatUserCancelledError,
-  presentRevenueCatCustomerCenter,
-  presentRevenueCatPaywall,
-  presentRevenueCatPaywallIfNeeded,
-  purchaseRevenueCatPackage,
-  restoreRevenueCatPurchases,
-  syncRevenueCatPurchases,
-  type RevenueCatPackagesMap,
-  type RevenueCatPlanId,
-} from "../services/revenuecat";
-
-import { DecorativeBackground, NumberAdjuster, WelcomeIllustration } from "./index.components";
+  DecorativeBackground,
+  NumberAdjuster,
+  WelcomeIllustration,
+} from "../features/main-screen/shared-components";
+import { styles } from "../features/main-screen/styles";
+import { AiTab } from "../features/main-screen/tabs/AiTab";
+import { HomeTab as HomeTabContent } from "../features/main-screen/tabs/HomeTab";
+import { InsightsTab } from "../features/main-screen/tabs/InsightsTab";
+import { ProfileTab } from "../features/main-screen/tabs/ProfileTab";
+import { TipsTab } from "../features/main-screen/tabs/TipsTab";
 import {
   APP_STATE_STORAGE_KEY,
   BREATHING_STEPS,
@@ -51,17 +40,12 @@ import {
   DEFAULT_CYCLE_LENGTH,
   DEFAULT_PERIOD_LENGTH,
   DEFAULT_SELECTED_FLOW,
-  EMPTY_REVENUECAT_PACKAGES,
-  FREE_AI_DAILY_LIMIT,
-  GIRL_TIPS,
   GOAL_OPTIONS,
-  INITIAL_AI_MESSAGES,
   MENSTRUAL_FLOW_OPTIONS,
   MOOD_OPTIONS,
   NAV_ITEMS,
   WEEK_DAY_KEYS,
-} from "./index.constants";
-import { styles } from "./index.styles";
+} from "../features/main-screen/constants";
 import {
   addDays,
   addMonths,
@@ -74,9 +58,8 @@ import {
   isSameDay,
   startOfDay,
   startOfMonth,
-} from "./index.utils";
+} from "../features/main-screen/utils";
 import type {
-  AiMessage,
   BreathPhase,
   DecoratedCalendarDay,
   GoalOption,
@@ -85,11 +68,12 @@ import type {
   ProfileView,
   ProUpsellSource,
   SymptomLogEntry,
-} from "./index.types";
+} from "../features/main-screen/types";
+import type { RevenueCatPlanId } from "../services/revenuecat";
+
 export default function Index() {
   const { t, i18n } = useTranslation();
   const dateLocale = getDateLocale(i18n.language as SupportedLanguage);
-  const todayISO = startOfDay(new Date()).toISOString();
 
   const [isHydrated, setIsHydrated] = useState(false);
   const [step, setStep] = useState(0);
@@ -97,11 +81,8 @@ export default function Index() {
   const [isOnboardingDone, setIsOnboardingDone] = useState(false);
   const [isPro, setIsPro] = useState(false);
   const [isDebugProOverrideEnabled, setIsDebugProOverrideEnabled] = useState(false);
-  const [isRevenueCatEnabled, setIsRevenueCatEnabled] = useState(false);
   const [isSubscriptionModalVisible, setIsSubscriptionModalVisible] = useState(false);
-  const [isRevenueCatLoading, setIsRevenueCatLoading] = useState(false);
   const [isProSuccessVisible, setIsProSuccessVisible] = useState(false);
-  const [revenueCatPackages, setRevenueCatPackages] = useState<RevenueCatPackagesMap>(EMPTY_REVENUECAT_PACKAGES);
 
   const [name, setName] = useState("");
   const [draftProfileName, setDraftProfileName] = useState("");
@@ -124,14 +105,10 @@ export default function Index() {
   const [healthSyncEnabled, setHealthSyncEnabled] = useState(false);
   const [pinLockEnabled, setPinLockEnabled] = useState(false);
   const [symptomLogs, setSymptomLogs] = useState<SymptomLogEntry[]>([]);
-  const [aiInput, setAiInput] = useState("");
-  const [isAiTyping, setIsAiTyping] = useState(false);
-  const [aiUsageDateISO, setAiUsageDateISO] = useState(todayISO);
-  const [aiUsageCount, setAiUsageCount] = useState(0);
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>(INITIAL_AI_MESSAGES);
   const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
   const [checkInHistoryVisible, setCheckInHistoryVisible] = useState(false);
   const [selectedHistoryEntryId, setSelectedHistoryEntryId] = useState<string | null>(null);
+  const hasProAccess = isPro || (__DEV__ && isDebugProOverrideEnabled);
 
   const monthOptions = useMemo(() => {
     const base = startOfMonth(new Date());
@@ -141,11 +118,55 @@ export default function Index() {
   const [selectedInsightsMonthIndex, setSelectedInsightsMonthIndex] = useState(2);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(startOfDay(new Date()));
 
+  const cycleContext = useMemo(
+    () => getCycleContext(new Date(), lastPeriodDate, cycleLength, periodLength),
+    [lastPeriodDate, cycleLength, periodLength],
+  );
+
   const onboardingAnimation = useRef(new Animated.Value(1)).current;
   const breathingScale = useRef(new Animated.Value(1)).current;
   const breathingRippleAnim = useRef(new Animated.Value(0)).current;
   const breathingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const aiMessagesScrollRef = useRef<ScrollView | null>(null);
+
+  const {
+    isRevenueCatEnabled,
+    isRevenueCatLoading,
+    revenueCatPackages,
+    presentPaywall,
+    purchasePlan,
+    restoreSubscription,
+    openCustomerCenter,
+  } = useRevenueCatPro({
+    isPro,
+    setIsPro,
+    t,
+    onProUnlocked: () => setIsProSuccessVisible(true),
+  });
+
+  const {
+    aiInput,
+    setAiInput,
+    aiMessages,
+    setAiMessages,
+    aiMessagesScrollRef,
+    aiUsageCount,
+    setAiUsageCount,
+    aiUsageDateISO,
+    setAiUsageDateISO,
+    freeAiRemaining,
+    isAiLockedForFree,
+    isAiTyping,
+    sendAiMessage,
+  } = useAiAssistant({
+    activeTab,
+    cycleContext,
+    cycleLength,
+    goals,
+    hasProAccess,
+    language: i18n.language,
+    periodLength,
+    t,
+  });
 
   useEffect(() => {
     const hydrateAppState = async () => {
@@ -222,121 +243,7 @@ export default function Index() {
     };
 
     void hydrateAppState();
-  }, []);
-
-  const refreshRevenueCatState = useCallback(async () => {
-    if (!isRevenueCatEnabled) {
-      return;
-    }
-
-    try {
-      const [customerInfo, offerings] = await Promise.all([
-        getRevenueCatCustomerInfo(),
-        getRevenueCatOfferings(),
-      ]);
-
-      if (customerInfo) {
-        setIsPro(hasLunellaProEntitlement(customerInfo));
-      }
-      setRevenueCatPackages(getPackagesFromOffering(offerings?.current ?? null));
-    } catch (error) {
-      if (__DEV__) {
-        console.warn("RevenueCat refresh failed", error);
-      }
-    }
-  }, [isRevenueCatEnabled]);
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-
-    const setupRevenueCat = async () => {
-      try {
-        const enabled = await initializeRevenueCat();
-        setIsRevenueCatEnabled(enabled);
-
-        if (!enabled) {
-          return;
-        }
-
-        const [customerInfo, offerings] = await Promise.all([
-          getRevenueCatCustomerInfo(),
-          getRevenueCatOfferings(),
-        ]);
-
-        if (customerInfo) {
-          setIsPro(hasLunellaProEntitlement(customerInfo));
-        }
-        setRevenueCatPackages(getPackagesFromOffering(offerings?.current ?? null));
-
-        unsubscribe = addRevenueCatCustomerInfoListener((updatedInfo) => {
-          setIsPro(hasLunellaProEntitlement(updatedInfo));
-        });
-      } catch {
-        setIsRevenueCatEnabled(false);
-      }
-    };
-
-    void setupRevenueCat();
-
-    return () => {
-      unsubscribe?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    const persistedState: PersistedAppState = {
-      isOnboardingDone,
-      name,
-      goals,
-      lastPeriodDateISO: lastPeriodDate.toISOString(),
-      cycleLength,
-      periodLength,
-      remindersEnabled,
-      selectedFlow,
-      selectedMoods,
-      insightNudgesEnabled,
-      healthSyncEnabled,
-      pinLockEnabled,
-      aiMessages,
-      symptomLogs,
-      aiUsageDateISO,
-      aiUsageCount,
-      isPro,
-    };
-
-    void AsyncStorage.setItem(APP_STATE_STORAGE_KEY, JSON.stringify(persistedState));
-  }, [
-    aiMessages,
-    aiUsageCount,
-    aiUsageDateISO,
-    cycleLength,
-    goals,
-    healthSyncEnabled,
-    insightNudgesEnabled,
-    isHydrated,
-    isOnboardingDone,
-    isPro,
-    lastPeriodDate,
-    name,
-    periodLength,
-    pinLockEnabled,
-    remindersEnabled,
-    selectedFlow,
-    selectedMoods,
-    symptomLogs,
-  ]);
-
-  useEffect(() => {
-    const currentDayISO = startOfDay(new Date()).toISOString();
-    if (aiUsageDateISO !== currentDayISO) {
-      setAiUsageDateISO(currentDayISO);
-      setAiUsageCount(0);
-    }
-  }, [aiUsageDateISO]);
+  }, [setAiMessages, setAiUsageCount, setAiUsageDateISO]);
 
   useEffect(() => {
     onboardingAnimation.setValue(0);
@@ -506,26 +413,6 @@ export default function Index() {
   }, [activeTab, breathingPhase]);
 
   useEffect(() => {
-    if (activeTab !== "ai") {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      aiMessagesScrollRef.current?.scrollToEnd({ animated: true });
-    }, 40);
-
-    return () => {
-      clearTimeout(timeout);
-    };
-  }, [activeTab, aiMessages, isAiTyping]);
-
-  useEffect(() => {
-    if (activeTab !== "ai" && isAiTyping) {
-      setIsAiTyping(false);
-    }
-  }, [activeTab, isAiTyping]);
-
-  useEffect(() => {
     if (activeTab !== "profile" && profileView !== "main") {
       setProfileView("main");
     }
@@ -541,10 +428,52 @@ export default function Index() {
     [onboardingMonth, dateLocale],
   );
 
-  const cycleContext = useMemo(
-    () => getCycleContext(new Date(), lastPeriodDate, cycleLength, periodLength),
-    [lastPeriodDate, cycleLength, periodLength],
-  );
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    const persistedState: PersistedAppState = {
+      isOnboardingDone,
+      name,
+      goals,
+      lastPeriodDateISO: lastPeriodDate.toISOString(),
+      cycleLength,
+      periodLength,
+      remindersEnabled,
+      selectedFlow,
+      selectedMoods,
+      insightNudgesEnabled,
+      healthSyncEnabled,
+      pinLockEnabled,
+      aiMessages,
+      symptomLogs,
+      aiUsageDateISO,
+      aiUsageCount,
+      isPro,
+    };
+
+    void AsyncStorage.setItem(APP_STATE_STORAGE_KEY, JSON.stringify(persistedState));
+  }, [
+    aiMessages,
+    aiUsageCount,
+    aiUsageDateISO,
+    cycleLength,
+    goals,
+    healthSyncEnabled,
+    insightNudgesEnabled,
+    isHydrated,
+    isOnboardingDone,
+    isPro,
+    lastPeriodDate,
+    name,
+    periodLength,
+    pinLockEnabled,
+    remindersEnabled,
+    selectedFlow,
+    selectedMoods,
+    symptomLogs,
+  ]);
 
   const activeMonth = monthOptions[selectedMonthIndex] ?? monthOptions[2];
   const decoratedHomeDays = useMemo<DecoratedCalendarDay[]>(() => {
@@ -755,10 +684,6 @@ export default function Index() {
     };
   }, [recentSymptomLogs]);
 
-  const freeAiRemaining = Math.max(0, FREE_AI_DAILY_LIMIT - aiUsageCount);
-  const hasProAccess = isPro || (__DEV__ && isDebugProOverrideEnabled);
-  const isAiLockedForFree = !hasProAccess && freeAiRemaining <= 0;
-
   const selectedDatePregnancyDetail = useMemo(
     () =>
       buildPregnancyProbabilityDetail(
@@ -840,7 +765,7 @@ export default function Index() {
   const isBreathingRunning = breathingStepIndex !== null;
   const activeBreathingStep =
     breathingPhase === "inhale" || breathingPhase === "hold" || breathingPhase === "exhale"
-      ? BREATHING_STEPS.find((step) => step.phase === breathingPhase)
+      ? BREATHING_STEPS.find((step) => step.phase === breathingPhase) ?? null
       : null;
 
   const breathingGuideText =
@@ -936,207 +861,73 @@ export default function Index() {
     void handlePresentPaywall(false);
   };
 
-  const handlePresentPaywall = async (ifNeeded = true) => {
-    if (!isRevenueCatEnabled) {
-      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
-      return;
-    }
-
-    setIsRevenueCatLoading(true);
-    try {
-      if (ifNeeded) {
-        await presentRevenueCatPaywallIfNeeded();
-      } else {
-        await presentRevenueCatPaywall();
-      }
-
-      const customerInfo = await getRevenueCatCustomerInfo();
-      let unlocked = hasLunellaProEntitlement(customerInfo);
-
-      if (!unlocked) {
-        const syncedCustomerInfo = await syncRevenueCatPurchases();
-        unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? customerInfo);
-      }
-
-      if (unlocked && !isPro) {
-        setIsProSuccessVisible(true);
-      }
-      setIsPro(unlocked);
-      await refreshRevenueCatState();
-
+  const handlePresentPaywall = useCallback(
+    async (ifNeeded = true) => {
+      const unlocked = await presentPaywall(ifNeeded);
       if (unlocked) {
         setIsSubscriptionModalVisible(false);
       }
-    } catch {
-      Alert.alert(t("pro.genericErrorTitle"), t("pro.paywallError"));
-    } finally {
-      setIsRevenueCatLoading(false);
-    }
-  };
+    },
+    [presentPaywall],
+  );
 
-  const handlePurchasePlan = async (planId: RevenueCatPlanId) => {
-    if (!isRevenueCatEnabled) {
-      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
-      return;
-    }
-
-    const selectedPackage = revenueCatPackages[planId];
-
-    if (!selectedPackage) {
-      Alert.alert(t("pro.genericErrorTitle"), t("pro.productUnavailable"));
-      return;
-    }
-
-    setIsRevenueCatLoading(true);
-    try {
-      const purchaseResult = await purchaseRevenueCatPackage(selectedPackage);
-      let unlocked = hasLunellaProEntitlement(purchaseResult.customerInfo);
-
-      if (!unlocked) {
-        const syncedCustomerInfo = await syncRevenueCatPurchases();
-        unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? purchaseResult.customerInfo);
-      }
-
-      if (unlocked && !isPro) {
-        setIsProSuccessVisible(true);
-      }
-      setIsPro(unlocked);
-
+  const handlePurchasePlan = useCallback(
+    async (planId: RevenueCatPlanId) => {
+      const unlocked = await purchasePlan(planId);
       if (unlocked) {
-        Alert.alert(t("pro.purchaseSuccessTitle"), t("pro.purchaseSuccessDescription"));
         setIsSubscriptionModalVisible(false);
       }
-    } catch (error) {
-      if (isRevenueCatUserCancelledError(error)) {
+    },
+    [purchasePlan],
+  );
+
+  const handleRestoreSubscription = useCallback(async () => {
+    await restoreSubscription();
+  }, [restoreSubscription]);
+
+  const handleOpenCustomerCenter = useCallback(async () => {
+    await openCustomerCenter();
+  }, [openCustomerCenter]);
+
+  const showProUpsell = useCallback(
+    (source: ProUpsellSource) => {
+      if (!isRevenueCatEnabled) {
+        Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
         return;
       }
 
-      if (isRevenueCatAlreadyPurchasedError(error)) {
-        try {
-          const restoredInfo = await restoreRevenueCatPurchases();
-          let unlocked = hasLunellaProEntitlement(restoredInfo);
+      const sourceTitle =
+        source === "ai"
+          ? t("pro.upsellSourceAi")
+          : source === "insights"
+            ? t("pro.upsellSourceInsights")
+            : source === "export"
+              ? t("pro.upsellSourceExport")
+              : source === "health_sync"
+                ? t("pro.upsellSourceHealth")
+                : source === "passcode"
+                  ? t("pro.upsellSourcePasscode")
+                  : t("pro.upsellSourceInsights");
 
-          if (!unlocked) {
-            const syncedCustomerInfo = await syncRevenueCatPurchases();
-            unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? restoredInfo);
-          }
-
-          if (unlocked && !isPro) {
-            setIsProSuccessVisible(true);
-          }
-          setIsPro(unlocked);
-          if (unlocked) {
-            Alert.alert(t("pro.purchaseSuccessTitle"), t("pro.purchaseSuccessDescription"));
-            setIsSubscriptionModalVisible(false);
-            return;
-          }
-        } catch {
-          // Falls through to generic purchase error.
-        }
-      }
-
-      Alert.alert(t("pro.genericErrorTitle"), t("pro.purchaseError"));
-    } finally {
-      setIsRevenueCatLoading(false);
-      await refreshRevenueCatState();
-    }
-  };
-
-  const handleRestoreSubscription = async () => {
-    if (!isRevenueCatEnabled) {
-      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
-      return;
-    }
-
-    setIsRevenueCatLoading(true);
-    try {
-      const customerInfo = await restoreRevenueCatPurchases();
-      let unlocked = hasLunellaProEntitlement(customerInfo);
-
-      if (!unlocked) {
-        const syncedCustomerInfo = await syncRevenueCatPurchases();
-        unlocked = hasLunellaProEntitlement(syncedCustomerInfo ?? customerInfo);
-      }
-
-      if (unlocked && !isPro) {
-        setIsProSuccessVisible(true);
-      }
-      setIsPro(unlocked);
-      if (unlocked) {
-        Alert.alert(t("pro.restoreSuccessTitle"), t("pro.restoreSuccessDescription"));
-      } else {
-        Alert.alert(t("pro.genericErrorTitle"), t("pro.restoreError"));
-      }
-    } catch {
-      Alert.alert(t("pro.genericErrorTitle"), t("pro.restoreError"));
-    } finally {
-      setIsRevenueCatLoading(false);
-      await refreshRevenueCatState();
-    }
-  };
-
-  const handleOpenCustomerCenter = async () => {
-    if (!isRevenueCatEnabled) {
-      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
-      return;
-    }
-
-    setIsRevenueCatLoading(true);
-    try {
-      await presentRevenueCatCustomerCenter({
-        onRestoreCompleted: ({ customerInfo }) => {
-          const unlocked = hasLunellaProEntitlement(customerInfo);
-          if (unlocked && !isPro) {
-            setIsProSuccessVisible(true);
-          }
-          setIsPro(unlocked);
-        },
-      });
-
-      await refreshRevenueCatState();
-    } catch {
-      Alert.alert(t("pro.genericErrorTitle"), t("pro.customerCenterError"));
-    } finally {
-      setIsRevenueCatLoading(false);
-    }
-  };
-
-  const showProUpsell = (source: ProUpsellSource) => {
-    if (!isRevenueCatEnabled) {
-      Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
-      return;
-    }
-
-    const sourceTitle =
-      source === "ai"
-        ? t("pro.upsellSourceAi")
-        : source === "insights"
-          ? t("pro.upsellSourceInsights")
-          : source === "export"
-            ? t("pro.upsellSourceExport")
-            : source === "health_sync"
-              ? t("pro.upsellSourceHealth")
-              : source === "passcode"
-                ? t("pro.upsellSourcePasscode")
-                : t("pro.upsellSourceInsights");
-
-    Alert.alert(
-      t("pro.upsellTitle", { source: sourceTitle }),
-      t("pro.upsellDescription"),
-      [
-        {
-          text: t("pro.upsellLater"),
-          style: "cancel",
-        },
-        {
-          text: t("pro.upsellOpenPaywall"),
-          onPress: () => {
-            void handlePresentPaywall(true);
+      Alert.alert(
+        t("pro.upsellTitle", { source: sourceTitle }),
+        t("pro.upsellDescription"),
+        [
+          {
+            text: t("pro.upsellLater"),
+            style: "cancel",
           },
-        },
-      ],
-    );
-  };
+          {
+            text: t("pro.upsellOpenPaywall"),
+            onPress: () => {
+              void handlePresentPaywall(true);
+            },
+          },
+        ],
+      );
+    },
+    [handlePresentPaywall, isRevenueCatEnabled, t],
+  );
 
 
   const handleSaveDailyCheckin = () => {
@@ -1231,120 +1022,15 @@ export default function Index() {
     );
   };
 
-  const sendAiMessage = async (messageText: string) => {
-    const trimmedMessage = messageText.trim();
-    if (!trimmedMessage || isAiTyping) {
-      return;
-    }
-
-    if (isAiLockedForFree) {
-      showProUpsell("ai");
-      return;
-    }
-
-    const userMessage: AiMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      text: trimmedMessage,
-    };
-
-    const aiHistoryForPrompt = aiMessages
-      .filter((message) => message.id !== "assistant-welcome")
-      .slice(-8)
-      .map((message) => ({
-        role: message.role,
-        content: message.text,
-      }));
-
-    setAiMessages((currentMessages) => [...currentMessages, userMessage]);
-    setAiInput("");
-    setIsAiTyping(true);
-
-    const goalLine = goals.length > 0
-      ? goals
-        .map((goal) => {
-          const found = GOAL_OPTIONS.find((option) => option.id === goal);
-          return found ? t(found.labelKey) : goal;
-        })
-        .join(", ")
-      : t("ai.generalCycleTracking");
-
-    const assistantSystemPrompt = [
-      "You are Lunella AI, a professional menstrual and reproductive health assistant in a mobile app.",
-      "Provide clear, evidence-based, and compassionate guidance in a professional tone.",
-      "You are educational support only: do not diagnose, do not prescribe medication doses, and do not replace clinical care.",
-      "If there are red flags (severe pain, heavy bleeding, fainting, fever, pregnancy complications, or self-harm thoughts), advise urgent in-person medical care.",
-      "Keep uncertainty honest and avoid making up facts.",
-      "Answer in the user's language, with concise structure: direct answer, practical next steps, when to seek care.",
-      "Always end with a short disclaimer in the same language saying this is general information, not medical diagnosis.",
-      `User language: ${i18n.language}.`,
-      `Cycle length: ${cycleLength}. Period length: ${periodLength}.`,
-      `Next period starts in ${cycleContext.daysUntilNextPeriod} days (${cycleContext.nextPeriodStart.toISOString()}).`,
-      `Next ovulation in ${cycleContext.daysUntilOvulation} days (${cycleContext.nextOvulationDate.toISOString()}).`,
-      `Fertility window: ${cycleContext.fertilityStartDate.toISOString()} - ${cycleContext.fertilityEndDate.toISOString()}.`,
-      `User goals: ${goalLine}.`,
-      "Keep answers concise (about 4-8 sentences) unless the user asks for more depth.",
-    ].join(" ");
-
-    let responseText = "";
-    let usedLiveAi = false;
-
-    // Create a placeholder assistant message for streaming
-    const assistantMessageId = `assistant-${Date.now()}`;
-    const assistantMessage: AiMessage = {
-      id: assistantMessageId,
-      role: "assistant",
-      text: "",
-    };
-
-    setAiMessages((currentMessages) => [...currentMessages, assistantMessage]);
-
-    try {
-      responseText = await streamOpenRouterChatReply(
-        [
-          {
-            role: "system",
-            content: assistantSystemPrompt,
-          },
-          ...aiHistoryForPrompt,
-          {
-            role: "user",
-            content: trimmedMessage,
-          },
-        ],
-        (token: string) => {
-          // Update the assistant message with each token
-          setAiMessages((currentMessages) => {
-            const updatedMessages = [...currentMessages];
-            const lastMessage = updatedMessages[updatedMessages.length - 1];
-            if (lastMessage?.id === assistantMessageId) {
-              lastMessage.text += token;
-            }
-            return updatedMessages;
-          });
-        }
-      );
-      usedLiveAi = true;
-    } catch (error) {
-      console.warn("Lunella AI request failed", error);
-      responseText = t("ai.connectionError");
-      // Update the message with error text
-      setAiMessages((currentMessages) => {
-        const updatedMessages = [...currentMessages];
-        const lastMessage = updatedMessages[updatedMessages.length - 1];
-        if (lastMessage?.id === assistantMessageId) {
-          lastMessage.text = responseText;
-        }
-        return updatedMessages;
-      });
-    }
-
-    if (!hasProAccess && usedLiveAi) {
-      setAiUsageCount((currentCount) => currentCount + 1);
-    }
-
-    setIsAiTyping(false);
-  };
+  const handleSendAiMessage = useCallback(
+    async (messageText: string) => {
+      const result = await sendAiMessage(messageText);
+      if (result === "locked") {
+        showProUpsell("ai");
+      }
+    },
+    [sendAiMessage, showProUpsell],
+  );
 
   const stopBreathingSession = (nextPhase: BreathPhase = "ready") => {
     if (breathingTimerRef.current) {
@@ -1598,1171 +1284,148 @@ export default function Index() {
     );
   };
 
-  const renderHomeTab = () => {
-    return (
-      <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.homeHeader}>
-          <View>
-            <Text style={styles.headerTitle}>{t("home.myCycleCalendar")}</Text>
-            <Text style={styles.headerSubtitle}>
-              {new Date().toLocaleDateString(dateLocale, {
-                weekday: "long",
-                month: "short",
-                day: "numeric",
-              })}
-            </Text>
-          </View>
-          <View style={styles.profileAvatarWrap}>
-            <TouchableOpacity style={styles.profileAvatar} onPress={() => setActiveTab("profile")}>
-              <Text style={styles.profileAvatarText}>{(name.trim()[0] ?? "U").toUpperCase()}</Text>
-            </TouchableOpacity>
-            {hasProAccess && (
-              <View style={styles.homeProBadgeWrap}>
-                <View style={styles.homeProBadge}>
-                  <Text style={styles.homeProBadgeText}>{t("pro.activeShort")}</Text>
-                </View>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.insightRow}>
-          {insightCards.map((card) => (
-            <View key={card.heroLabel} style={[styles.insightCard, { backgroundColor: card.bgColor }]}>
-              <View style={styles.insightCardTop}>
-                <View style={[styles.insightIconCircle, { backgroundColor: card.iconBgColor }]}>
-                  <Ionicons name={card.icon} size={18} color={card.accentColor} />
-                </View>
-              </View>
-              <View style={styles.insightCardBody}>
-                <Text style={[styles.insightHeroValue, { color: card.accentColor }]}>{card.heroValue}</Text>
-                <Text style={styles.insightHeroLabel}>{card.heroLabel}</Text>
-              </View>
-              <Text style={styles.insightSubtitle}>{card.subtitle}</Text>
-            </View>
-          ))}
-        </ScrollView>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.monthChipRow}>
-          {monthOptions.map((monthOption, index) => {
-            const isSelected = selectedMonthIndex === index;
-            return (
-              <TouchableOpacity
-                key={monthOption.toISOString()}
-                style={[styles.monthChip, isSelected && styles.monthChipActive]}
-                onPress={() => setSelectedMonthIndex(index)}>
-                <Text style={[styles.monthChipText, isSelected && styles.monthChipTextActive]}>
-                  {monthOption.toLocaleDateString(dateLocale, { month: "short", year: "2-digit" })}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        <View style={styles.calendarCard}>
-          <Text style={styles.calendarCardTitle}>{monthLabel}</Text>
-
-          <View style={styles.weekHeader}>
-            {WEEK_DAY_KEYS.map((dayKey, index) => (
-              <Text key={`${dayKey}-home-${index}`} style={styles.weekDayText}>
-                {t(dayKey)}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.calendarGrid}>
-            {decoratedHomeDays.map((day) => {
-              const isSelectedDate = isSameDay(day.date, selectedCalendarDate);
-              const dayCategoryStyle =
-                day.category === "period"
-                  ? styles.dayPeriod
-                  : day.category === "ovulation"
-                    ? styles.dayOvulation
-                    : day.category === "fertility"
-                      ? styles.dayFertility
-                      : null;
-
-              return (
-                <Pressable
-                  key={day.date.toISOString()}
-                  onPress={() => setSelectedCalendarDate(startOfDay(day.date))}
-                  style={[
-                    styles.dayCell,
-                    !day.isCurrentMonth && styles.dayCellMuted,
-                    dayCategoryStyle,
-                    isSelectedDate && styles.selectedCalendarDayOutline,
-                    day.isToday && styles.todayOutline,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.dayCellText,
-                      !day.isCurrentMonth && styles.dayCellTextMuted,
-                      dayCategoryStyle && styles.dayCellTextSelected,
-                    ]}>
-                    {day.dayNumber}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.legendRow}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#D8C3F9" }]} />
-              <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#BFDDFE" }]} />
-              <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#CDEFD9" }]} />
-              <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.calendarHintText}>{t("home.calendarHint")}</Text>
-
-          <TouchableOpacity style={styles.periodStartButton} onPress={handlePeriodStartsToday}>
-            <MaterialCommunityIcons name="water-plus" size={20} color="#FFFFFF" />
-            <Text style={styles.periodStartButtonText}>{t("home.periodStartsToday")}</Text>
-          </TouchableOpacity>
-
-          {renderPregnancyProbabilityCard()}
-        </View>
-      </ScrollView>
-    );
-  };
-
-  const renderTipsTab = () => {
-    const feelingName = name.trim() || "Gul";
-    const todayISO = startOfDay(new Date()).toISOString();
-    const todayCheckIn = symptomLogs.find((log) => log.dateISO === todayISO);
-    const hasTodayCheckIn = !!todayCheckIn;
-
-    return (
-      <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>{t("tips.sectionTitle")}</Text>
-
-        {hasTodayCheckIn && (
-          <View style={styles.todayCheckInBanner}>
-            <View style={styles.todayCheckInBannerHeader}>
-              <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-              <Text style={styles.todayCheckInBannerText}>{t("tips.alreadyCheckedIn")}</Text>
-            </View>
-            <TouchableOpacity onPress={openCheckInHistory}>
-              <Text style={styles.todayCheckInBannerLink}>{t("tips.viewOrEdit")}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.infoCard}>
-          <View style={styles.flowCard}>
-            <Text style={styles.flowCardTitle}>{t("tips.menstrualFlow")}</Text>
-
-            <View style={styles.flowTabRow}>
-              {MENSTRUAL_FLOW_OPTIONS.map((flowOption) => {
-                const isSelected = selectedFlow === flowOption.key;
-
-                return (
-                  <Pressable
-                    key={flowOption.key}
-                    style={[styles.flowTab, isSelected && styles.flowTabActive]}
-                    onPress={() => setSelectedFlow(flowOption.key)}>
-                    <View style={styles.flowDropRow}>
-                      {Array.from({ length: flowOption.drops }).map((_, index) => (
-                        <MaterialCommunityIcons
-                          key={`${flowOption.key}-${index}`}
-                          name="water"
-                          size={16}
-                          color={isSelected ? "#FFFFFF" : "#8F72C5"}
-                        />
-                      ))}
-                    </View>
-                    <Text style={[styles.flowLabel, isSelected && styles.flowLabelActive]}>
-                      {t(flowOption.labelKey)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <Text style={styles.tipsQuestion}>{t("tips.howDoYouFeel", { name: feelingName })}</Text>
-          <Text style={styles.infoFootnote}>{t("tips.pickMoods")}</Text>
-
-          <View style={styles.moodGrid}>
-            {MOOD_OPTIONS.map((moodOption) => {
-              const isSelected = selectedMoods.includes(moodOption.labelKey);
-              return (
-                <Pressable
-                  key={moodOption.labelKey}
-                  style={[styles.moodChip, isSelected && styles.moodChipActive]}
-                  onPress={() => toggleMood(moodOption.labelKey)}>
-                  <Text style={styles.moodEmoji}>{moodOption.emoji}</Text>
-                  <Text style={[styles.moodLabel, isSelected && styles.moodLabelActive]}>
-                    {t(moodOption.labelKey)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            style={styles.saveCheckinButton}
-            onPress={handleSaveDailyCheckin}>
-            <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
-            <Text style={styles.saveCheckinButtonText}>{t("tips.saveToday")}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.viewHistoryButton}
-            onPress={openCheckInHistory}>
-            <Ionicons name="calendar-outline" size={18} color="#8F72C5" />
-            <Text style={styles.viewHistoryButtonText}>
-              {t("tips.viewHistory")} {symptomLogs.length > 0 && `(${symptomLogs.length})`}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.tipsSectionWrap}>
-          <View style={styles.tipsSectionHeader}>
-            <Text style={styles.tipsSectionTitle}>{t("tips.helpfulTips")}</Text>
-            <View style={styles.tipsSectionBadge}>
-              <MaterialCommunityIcons name="lightbulb-on" size={16} color="#F7B84B" />
-            </View>
-          </View>
-          
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tipsGridScroll}>
-            {GIRL_TIPS.map((tip, index) => {
-              const tipIcons: { [key: string]: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; bgColor: string } } = {
-                "girlTips.tip1Title": { icon: "tea", color: "#D4587A", bgColor: "#FCEEF4" },
-                "girlTips.tip2Title": { icon: "moon-waning-crescent", color: "#7B5EA8", bgColor: "#F0E8FA" },
-                "girlTips.tip3Title": { icon: "water", color: "#4A9D6E", bgColor: "#ECF8F1" },
-                "girlTips.tip4Title": { icon: "food-apple", color: "#E6A84D", bgColor: "#FFF3EA" },
-                "girlTips.tip5Title": { icon: "walk", color: "#8F72C5", bgColor: "#F0E8FA" },
-              };
-              const tipStyle = tipIcons[tip.titleKey] || { icon: "lightbulb", color: "#8F72C5", bgColor: "#F0E8FA" };
-              
-              return (
-                <View key={tip.titleKey} style={styles.tipCardNew}>
-                  <View style={[styles.tipIconCircle, { backgroundColor: tipStyle.bgColor }]}>
-                    <MaterialCommunityIcons name={tipStyle.icon} size={28} color={tipStyle.color} />
-                  </View>
-                  <View style={styles.tipContent}>
-                    <Text style={styles.tipTitleNew}>{t(tip.titleKey)}</Text>
-                    <Text style={styles.tipDetailNew}>{t(tip.detailKey)}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <LinearGradient
-          colors={["#F8F4FF", "#FFFFFF"]}
-          style={styles.breathingContainer}>
-          <View style={styles.breathingHeader}>
-            <View>
-              <Text style={styles.breathingTitle}>{t("breathing.meditationTitle")}</Text>
-              <Text style={styles.breathingSubtitle}>{breathingRoundText}</Text>
-            </View>
-            <MaterialCommunityIcons name="leaf" size={24} color="#8F72C5" opacity={0.6} />
-          </View>
-
-          <View style={styles.breathingVisualArea}>
-            <View style={styles.breathingCircleBackground}>
-              <Animated.View 
-                style={[
-                  styles.breathingRipple1, 
-                  { 
-                    opacity: breathingRippleAnim,
-                    transform: [{ scale: breathingRippleAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 1.2],
-                    }) }]
-                  }
-                ]} 
-              />
-              <Animated.View 
-                style={[
-                  styles.breathingRipple2, 
-                  { 
-                    opacity: breathingRippleAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.3, 0.6],
-                    }),
-                    transform: [{ scale: breathingRippleAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.9, 1.1],
-                    }) }]
-                  }
-                ]} 
-              />
-            </View>
-            
-            <Animated.View 
-              style={[
-                styles.breathingMainCircle, 
-                { transform: [{ scale: breathingScale }] }
-              ]}>
-              <LinearGradient
-                colors={["#E9DFFF", "#F5F0FF"]}
-                style={styles.breathingCircleGradient}>
-                <MaterialCommunityIcons 
-                  name={breathingPhase === "done" ? "check-circle" : "flower"} 
-                  size={48} 
-                  color="#8F72C5" 
-                />
-              </LinearGradient>
-            </Animated.View>
-
-            <View style={styles.breathingPhaseOverlay}>
-              <Text style={styles.breathingPhaseText}>
-                {isBreathingRunning ? activeBreathingStep?.labelKey ? t(activeBreathingStep.labelKey) : t("breathing.breathe") : 
-                 breathingPhase === "done" ? t("breathing.doneGuide") : t("breathing.ready")}
-              </Text>
-              {isBreathingRunning && (
-                <Text style={styles.breathingTimerText}>{breathingSecondsLeft}s</Text>
-              )}
-            </View>
-          </View>
-
-          <Text style={styles.breathingDescription}>
-            {breathingGuideText}
-          </Text>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.breathingStartButton, isBreathingRunning && styles.breathingStopButton]}
-            onPress={isBreathingRunning ? () => stopBreathingSession("ready") : startBreathingSession}>
-            <Text style={styles.breathingStartButtonText}>
-              {isBreathingRunning
-                ? t("breathing.stopExercise")
-                : breathingPhase === "done"
-                  ? t("breathing.startAgain")
-                  : t("breathing.startBreathing")}
-            </Text>
-            {!isBreathingRunning && <Ionicons name="play" size={18} color="#FFFFFF" style={{marginLeft: 8}} />}
-          </TouchableOpacity>
-        </LinearGradient>
-
-      </ScrollView>
-    );
-  };
-
-  const renderInsightsTab = () => {
-    return (
-      <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>{t("insights.cycleStatistics")}</Text>
-        <Text style={styles.infoFootnote}>{t("insights.trackPatterns")}</Text>
-
-        <View style={styles.calendarCard}>
-          <Text style={styles.calendarCardTitle}>{insightsMonthLabel}</Text>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.monthChipRow}>
-            {monthOptions.map((monthOption, index) => {
-              const isSelected = selectedInsightsMonthIndex === index;
-              return (
-                <TouchableOpacity
-                  key={`insights-${monthOption.toISOString()}`}
-                  style={[styles.monthChip, isSelected && styles.monthChipActive]}
-                  onPress={() => setSelectedInsightsMonthIndex(index)}>
-                  <Text style={[styles.monthChipText, isSelected && styles.monthChipTextActive]}>
-                    {monthOption.toLocaleDateString(dateLocale, { month: "short", year: "2-digit" })}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <View style={styles.weekHeader}>
-            {WEEK_DAY_KEYS.map((dayKey, index) => (
-              <Text key={`${dayKey}-insights-${index}`} style={styles.weekDayText}>
-                {t(dayKey)}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.calendarGrid}>
-            {decoratedInsightsDays.map((day) => {
-              const isSelectedDate = isSameDay(day.date, selectedCalendarDate);
-              const dayCategoryStyle =
-                day.category === "period"
-                  ? styles.dayPeriod
-                  : day.category === "ovulation"
-                    ? styles.dayOvulation
-                    : day.category === "fertility"
-                      ? styles.dayFertility
-                      : null;
-
-              return (
-                <Pressable
-                  key={`insight-day-${day.date.toISOString()}`}
-                  onPress={() => setSelectedCalendarDate(startOfDay(day.date))}
-                  style={[
-                    styles.dayCell,
-                    !day.isCurrentMonth && styles.dayCellMuted,
-                    dayCategoryStyle,
-                    isSelectedDate && styles.selectedCalendarDayOutline,
-                    day.isToday && styles.todayOutline,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.dayCellText,
-                      !day.isCurrentMonth && styles.dayCellTextMuted,
-                      dayCategoryStyle && styles.dayCellTextSelected,
-                    ]}>
-                    {day.dayNumber}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.legendRow}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#D8C3F9" }]} />
-              <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#BFDDFE" }]} />
-              <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: "#CDEFD9" }]} />
-              <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.calendarHintText}>{t("home.calendarHint")}</Text>
-          {renderPregnancyProbabilityCard()}
-        </View>
-
-        <Text style={styles.insightSectionTitle}>
-          {currentMonthInsight?.monthLabel ?? t("insights.thisMonth")} {t("insights.cycleStatistics").toLowerCase()}
-        </Text>
-
-        <View style={styles.statsGrid}>
-          <View style={[styles.statCard, styles.statCardPink]}>
-            <Text style={styles.statTitle}>{t("insights.cycleLength")}</Text>
-            <Text style={styles.statValue}>{t("insights.days", { count: cycleLength })}</Text>
-            <Text style={styles.statSubtext}>{t("insights.thisMonth")}</Text>
-          </View>
-
-          <View style={[styles.statCard, styles.statCardLavender]}>
-            <Text style={styles.statTitle}>{t("insights.periodDuration")}</Text>
-            <Text style={styles.statValue}>{t("insights.days", { count: periodLength })}</Text>
-            <Text style={styles.statSubtext}>{currentMonthInsight?.periodRangeLabel ?? t("insights.noPredictedPeriodDays")}</Text>
-          </View>
-
-          <View style={[styles.statCard, styles.statCardPeach]}>
-            <Text style={styles.statTitle}>{t("insights.ovulationDay")}</Text>
-            <Text style={styles.statValue}>
-              {currentMonthInsight?.ovulationDayOfMonth
-                ? t("insights.dayLabel", { day: currentMonthInsight.ovulationDayOfMonth })
-                : t("insights.notInMonth")}
-            </Text>
-            <Text style={styles.statSubtext}>{currentMonthInsight?.monthLabel ?? t("insights.thisMonth")}</Text>
-          </View>
-
-          <View style={[styles.statCard, styles.statCardMint]}>
-            <Text style={styles.statTitle}>{t("insights.avgSymptoms")}</Text>
-            <Text style={styles.statValue}>{averageSymptomScore}</Text>
-            <Text style={styles.statSubtext}>{t("insights.predictedMonthlyScore")}</Text>
-          </View>
-        </View>
-
-        <View style={styles.proInsightsCard}>
-          <View style={styles.proInsightsHeader}>
-            <Text style={styles.proInsightsTitle}>{t("pro.advancedInsightsTitle")}</Text>
-            <MaterialCommunityIcons name="star-four-points" size={18} color="#8F72C5" />
-          </View>
-
-          {hasProAccess ? (
-            <>
-              <Text style={styles.proInsightsText}>
-                {t("pro.insightsLogs", { count: proInsightsSummary.logsCount })}
-              </Text>
-              <Text style={styles.proInsightsText}>
-                {t("pro.insightsDiscomfort", { count: proInsightsSummary.highDiscomfortDays })}
-              </Text>
-              <Text style={styles.proInsightsText}>
-                {t("pro.insightsTopMood", {
-                  mood: proInsightsSummary.topMoodKey ? t(proInsightsSummary.topMoodKey) : t("pro.noData"),
-                })}
-              </Text>
-              <Text style={styles.proInsightsText}>
-                {t("pro.insightsTopFlow", {
-                  flow: proInsightsSummary.topFlowKey ? t(`flow.${proInsightsSummary.topFlowKey}`) : t("pro.noData"),
-                })}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.proInsightsLockedText}>{t("pro.lockedDescription")}</Text>
-              <TouchableOpacity
-                style={styles.proInsightsUnlockButton}
-                onPress={() => showProUpsell("insights")}>
-                <Text style={styles.proInsightsUnlockText}>{t("pro.unlockButton")}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        <View style={styles.overviewCard}>
-          <View style={styles.overviewHeader}>
-            <Text style={styles.overviewTitle}>{t("insights.cycleOverview", { year: new Date().getFullYear() })}</Text>
-            <View style={styles.overviewBadge}>
-              <MaterialCommunityIcons name="chart-line" size={16} color="#8F72C5" />
-            </View>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cycleOverviewScroll}>
-            {monthlyInsights
-              .slice()
-              .reverse()
-              .map((insight, index) => {
-                const isActive = index === 0;
-                const totalActiveDays = insight.periodDays + insight.fertilityDays;
-                const maxDays = Math.max(14, totalActiveDays);
-                const periodPercent = (insight.periodDays / maxDays) * 100;
-                const fertilityPercent = (insight.fertilityDays / maxDays) * 100;
-                
-                return (
-                  <Pressable
-                    key={`overview-${insight.monthDate.toISOString()}`}
-                    style={[styles.cycleMonthCard, isActive && styles.cycleMonthCardActive]}>
-                    <View style={styles.cycleMonthHeader}>
-                      <Text style={[styles.cycleMonthLabel, isActive && styles.cycleMonthLabelActive]}>
-                        {insight.monthDate.toLocaleDateString(dateLocale, { month: "short" })}
-                      </Text>
-                      <Text style={[styles.cycleMonthYear, isActive && styles.cycleMonthYearActive]}>
-                        {insight.monthDate.getFullYear()}
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.cycleStatsRow}>
-                      <View style={styles.cycleStatItem}>
-                        <View style={[styles.cycleStatIcon, { backgroundColor: "#FCEEF4" }]}>
-                          <MaterialCommunityIcons name="water" size={14} color="#D4587A" />
-                        </View>
-                        <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
-                          {insight.periodDays}
-                        </Text>
-                        <Text style={styles.cycleStatLabel}>{t("insights.periodDays")}</Text>
-                      </View>
-                      
-                      <View style={styles.cycleStatItem}>
-                        <View style={[styles.cycleStatIcon, { backgroundColor: "#FDF1D9" }]}>
-                          <MaterialCommunityIcons name="egg" size={14} color="#E6A84D" />
-                        </View>
-                        <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
-                          {insight.ovulationDays}
-                        </Text>
-                        <Text style={styles.cycleStatLabel}>{t("insights.ovulationDays")}</Text>
-                      </View>
-                      
-                      <View style={styles.cycleStatItem}>
-                        <View style={[styles.cycleStatIcon, { backgroundColor: "#ECF8F1" }]}>
-                          <MaterialCommunityIcons name="leaf" size={14} color="#4A9D6E" />
-                        </View>
-                        <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
-                          {insight.fertilityDays}
-                        </Text>
-                        <Text style={styles.cycleStatLabel}>{t("insights.fertilityDays")}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.cycleMiniChart}>
-                      <View style={styles.cycleMiniBarTrack}>
-                        <View style={[styles.cycleMiniBar, { width: `${periodPercent}%`, backgroundColor: "#D4587A" }]} />
-                        <View style={[styles.cycleMiniBar, { width: `${fertilityPercent}%`, backgroundColor: "#4A9D6E" }]} />
-                      </View>
-                      <Text style={styles.cycleMiniChartLabel}>{t("insights.activeDays", { count: totalActiveDays })}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-          </ScrollView>
-
-          <View style={styles.cycleSummaryRow}>
-            <View style={styles.cycleSummaryItem}>
-              <Text style={styles.cycleSummaryValue}>{monthlyInsights.length}</Text>
-              <Text style={styles.cycleSummaryLabel}>{t("insights.monthsTracked")}</Text>
-            </View>
-            <View style={styles.cycleSummaryDivider} />
-            <View style={styles.cycleSummaryItem}>
-              <Text style={styles.cycleSummaryValue}>
-                {Math.round(monthlyInsights.reduce((sum, i) => sum + i.periodDays, 0) / monthlyInsights.length)}
-              </Text>
-              <Text style={styles.cycleSummaryLabel}>{t("insights.avgPeriod")}</Text>
-            </View>
-            <View style={styles.cycleSummaryDivider} />
-            <View style={styles.cycleSummaryItem}>
-              <Text style={styles.cycleSummaryValue}>
-                {Math.round(monthlyInsights.reduce((sum, i) => sum + i.fertilityDays, 0) / monthlyInsights.length)}
-              </Text>
-              <Text style={styles.cycleSummaryLabel}>{t("insights.avgFertility")}</Text>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-    );
-  };
-
-  const renderAiTab = () => {
-    return (
-      <KeyboardAvoidingView
-        style={styles.aiPageWrap}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={74}>
-        <LinearGradient
-          colors={["#F4EDFC", "#FCEEF5"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.aiHeroCard}>
-          <View>
-            <Text style={styles.aiHeroTitle}>{t("ai.heroTitle")}</Text>
-            <Text style={styles.aiHeroSubtitle}>{t("ai.heroSubtitle")}</Text>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.aiQuotaCard}>
-          <Text style={styles.aiQuotaTitle}>
-            {hasProAccess
-              ? t("pro.activePlan")
-              : t("pro.aiDailyRemaining", { count: freeAiRemaining, total: FREE_AI_DAILY_LIMIT })}
-          </Text>
-          {!hasProAccess && (
-            <TouchableOpacity onPress={() => showProUpsell("ai")}>
-              <Text style={styles.aiQuotaUpgradeText}>{t("pro.unlockButton")}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView
-          horizontal
-          style={styles.aiPromptScroll}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.aiPromptRow}>
-          {aiQuickPrompts.map((prompt) => (
-            <TouchableOpacity key={prompt} style={styles.aiPromptChip} onPress={() => sendAiMessage(prompt)}>
-              <Text style={styles.aiPromptChipText}>{prompt}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <ScrollView
-          ref={aiMessagesScrollRef}
-          style={styles.aiMessagesScroll}
-          contentContainerStyle={styles.aiMessagesContent}
-          showsVerticalScrollIndicator={false}>
-          {aiMessages.map((message) => (
-            <View
-              key={message.id}
-              style={[
-                styles.aiBubble,
-                message.role === "assistant" ? styles.aiAssistantBubble : styles.aiUserBubble,
-              ]}>
-              {message.role === "assistant" ? (
-                <Markdown
-                  style={{
-                    body: { ...styles.aiAssistantBubbleText, margin: 0, padding: 0 },
-                    paragraph: { ...styles.aiBubbleText, marginTop: 0, marginBottom: 0 },
-                    strong: { fontWeight: "700" },
-                    em: { fontStyle: "italic" },
-                    text: { ...styles.aiAssistantBubbleText },
-                  }}>
-                  {message.id === "assistant-welcome" ? t("ai.welcomeMessage") : message.text}
-                </Markdown>
-              ) : (
-                <Text
-                  style={[
-                    styles.aiBubbleText,
-                    styles.aiUserBubbleText,
-                  ]}>
-                  {message.text}
-                </Text>
-              )}
-            </View>
-          ))}
-
-          {isAiTyping && (
-            <View style={[styles.aiBubble, styles.aiAssistantBubble, styles.aiTypingBubble]}>
-              <Text style={styles.aiAssistantBubbleText}>{t("ai.thinking")}</Text>
-            </View>
-          )}
-        </ScrollView>
-
-        <View style={styles.aiComposerWrap}>
-          <TextInput
-            value={aiInput}
-            onChangeText={setAiInput}
-            placeholder={t("ai.placeholder")}
-            placeholderTextColor="#9A8BA0"
-            style={styles.aiInput}
-            returnKeyType="send"
-            editable={!isAiLockedForFree}
-            onSubmitEditing={() => sendAiMessage(aiInput)}
-          />
-
-          <TouchableOpacity
-            style={[styles.aiSendButton, (!aiInput.trim() || isAiTyping || isAiLockedForFree) && styles.aiSendButtonDisabled]}
-            onPress={() => sendAiMessage(aiInput)}
-            disabled={!aiInput.trim() || isAiTyping || isAiLockedForFree}>
-            <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    );
-  };
-
-  const renderProfileTab = () => {
-    const profileName = name.trim() || "Gul";
-    const profileGoals = goals.length > 0
-      ? goals.map((g) => {
-          const found = GOAL_OPTIONS.find((o) => o.id === g);
-          return found ? t(found.labelKey) : g;
-        }).join(", ")
-      : t("goals.cycleTracking");
-
-    const subscriptionPlans: { id: RevenueCatPlanId; label: string }[] = [
-      { id: "monthly", label: t("pro.planMonthly") },
-      { id: "yearly", label: t("pro.planYearly") },
-      { id: "lifetime", label: t("pro.planLifetime") },
-    ];
-
-    if (profileView === "edit_profile") {
-      const editNamePreview = draftProfileName.trim() || profileName;
-
-      return (
-        <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.settingsHeaderRow}>
-            <TouchableOpacity style={styles.settingsBackButton} onPress={closeEditProfile}>
-              <Ionicons name="chevron-back" size={20} color="#4B3E53" />
-            </TouchableOpacity>
-            <Text style={styles.settingsHeaderTitle}>{t("profile.editProfileTitle")}</Text>
-            <View style={styles.settingsHeaderSpacer} />
-          </View>
-
-          <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>{t("profile.editProfileSectionTitle")}</Text>
-            <Text style={styles.settingsRowSubtitle}>{t("profile.editProfileHint")}</Text>
-
-            <View style={styles.editProfileAvatarWrap}>
-              <View style={styles.profileAvatarLarge}>
-                <Text style={styles.profileAvatarLargeText}>{editNamePreview[0].toUpperCase()}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.editProfileFieldLabel}>{t("profile.nameLabel")}</Text>
-            <TextInput
-              style={styles.editProfileInput}
-              value={draftProfileName}
-              onChangeText={setDraftProfileName}
-              placeholder={t("profile.namePlaceholder")}
-              placeholderTextColor="#9A8BA0"
-              maxLength={40}
-              autoCapitalize="words"
-              returnKeyType="done"
-              onSubmitEditing={handleSaveProfileName}
-            />
-
-            <View style={styles.editProfileActionsRow}>
-              <TouchableOpacity style={styles.editProfileCancelButton} onPress={closeEditProfile}>
-                <Text style={styles.editProfileCancelButtonText}>{t("languagePicker.cancel")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.editProfileSaveButton,
-                  !draftProfileName.trim() && styles.editProfileSaveButtonDisabled,
-                ]}
-                onPress={handleSaveProfileName}
-                disabled={!draftProfileName.trim()}>
-                <Text style={styles.editProfileSaveButtonText}>{t("profile.saveChanges")}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      );
-    }
-
-    if (profileView === "settings") {
-      return (
-        <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.settingsHeaderRow}>
-            <TouchableOpacity style={styles.settingsBackButton} onPress={() => setProfileView("main")}>
-              <Ionicons name="chevron-back" size={20} color="#4B3E53" />
-            </TouchableOpacity>
-            <Text style={styles.settingsHeaderTitle}>{t("settings.title")}</Text>
-            <View style={styles.settingsHeaderSpacer} />
-          </View>
-
-          <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>{t("settings.notifications")}</Text>
-
-            <View style={styles.settingsSwitchRow}>
-              <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>{t("settings.cycleReminders")}</Text>
-                <Text style={styles.settingsRowSubtitle}>{t("settings.cycleRemindersDesc")}</Text>
-              </View>
-              <Switch
-                value={remindersEnabled}
-                onValueChange={setRemindersEnabled}
-                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={styles.settingsSwitchRow}>
-              <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>{t("settings.insightNudges")}</Text>
-                <Text style={styles.settingsRowSubtitle}>{t("settings.insightNudgesDesc")}</Text>
-              </View>
-              <Switch
-                value={insightNudgesEnabled}
-                onValueChange={setInsightNudgesEnabled}
-                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-
-          <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>{t("settings.privacySecurity")}</Text>
-
-            <View style={styles.settingsSwitchRow}>
-              <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>{t("settings.appPasscodeLock")}</Text>
-                <Text style={styles.settingsRowSubtitle}>{t("settings.appPasscodeLockDesc")}</Text>
-              </View>
-              <Switch
-                value={pinLockEnabled}
-                onValueChange={(nextValue) => {
-                  if (!hasProAccess && nextValue) {
-                    showProUpsell("passcode");
-                    return;
-                  }
-                  setPinLockEnabled(nextValue);
-                }}
-                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-
-          <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>{t("settings.integrations")}</Text>
-
-            <View style={styles.settingsSwitchRow}>
-              <View style={styles.settingsSwitchTextWrap}>
-                <Text style={styles.settingsRowTitle}>{t("settings.healthSync")}</Text>
-                <Text style={styles.settingsRowSubtitle}>{t("settings.healthSyncDesc")}</Text>
-              </View>
-              <Switch
-                value={healthSyncEnabled}
-                onValueChange={(nextValue) => {
-                  if (!hasProAccess && nextValue) {
-                    showProUpsell("health_sync");
-                    return;
-                  }
-                  setHealthSyncEnabled(nextValue);
-                }}
-                trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-
-          {__DEV__ && (
-            <View style={styles.settingsCard}>
-              <Text style={styles.settingsSectionTitle}>{t("settings.debugSection")}</Text>
-
-              <View style={styles.settingsSwitchRow}>
-                <View style={styles.settingsSwitchTextWrap}>
-                  <Text style={styles.settingsRowTitle}>{t("settings.debugProAccess")}</Text>
-                  <Text style={styles.settingsRowSubtitle}>{t("settings.debugProAccessDesc")}</Text>
-                </View>
-                <Switch
-                  value={isDebugProOverrideEnabled}
-                  onValueChange={setIsDebugProOverrideEnabled}
-                  trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-            </View>
-          )}
-
-          <View style={styles.settingsCard}>
-            <Text style={styles.settingsSectionTitle}>{t("settings.general")}</Text>
-
-            <TouchableOpacity style={styles.settingsNavRow} onPress={() => setLanguagePickerVisible(true)}>
-              <Text style={styles.settingsRowTitle}>{t("settings.language")}</Text>
-              <View style={styles.settingsNavRight}>
-                <Text style={styles.settingsNavValue}>{SUPPORTED_LANGUAGES[i18n.language] ?? "English"}</Text>
-                <Ionicons name="chevron-forward" size={16} color="#85788A" />
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.settingsNavRow}
-              onPress={openSubscriptionModal}>
-              <Text style={styles.settingsRowTitle}>{t("pro.managePlan")}</Text>
-              <View style={styles.settingsNavRight}>
-                <Text style={styles.settingsNavValue}>{hasProAccess ? t("pro.activeShort") : t("pro.freeShort")}</Text>
-                <Ionicons name="chevron-forward" size={16} color="#85788A" />
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.settingsNavRow} onPress={handleExportCycleData}>
-              <Text style={styles.settingsRowTitle}>{t("settings.exportCycleData")}</Text>
-              <Ionicons name="chevron-forward" size={16} color="#85788A" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.settingsNavRow}>
-              <Text style={styles.settingsRowTitle}>{t("settings.helpSupport")}</Text>
-              <Ionicons name="chevron-forward" size={16} color="#85788A" />
-            </TouchableOpacity>
-          </View>
-
-          <Modal
-            visible={languagePickerVisible}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setLanguagePickerVisible(false)}>
-            <Pressable style={styles.languageModalOverlay} onPress={() => setLanguagePickerVisible(false)}>
-              <View style={styles.languageModalContent}>
-                <Text style={styles.languageModalTitle}>{t("languagePicker.title")}</Text>
-                {Object.entries(SUPPORTED_LANGUAGES).map(([code, label]) => (
-                  <TouchableOpacity
-                    key={code}
-                    style={styles.languageOptionRow}
-                    onPress={() => {
-                      i18n.changeLanguage(code);
-                      persistLanguage(code as SupportedLanguage);
-                      setLanguagePickerVisible(false);
-                    }}>
-                    <Text style={[
-                      styles.languageOptionText,
-                      i18n.language === code && styles.languageOptionTextActive,
-                    ]}>
-                      {label}
-                    </Text>
-                    {i18n.language === code && (
-                      <Ionicons name="checkmark" size={18} color="#8F72C5" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={styles.languageCancelButton}
-                  onPress={() => setLanguagePickerVisible(false)}>
-                  <Text style={styles.languageCancelText}>{t("languagePicker.cancel")}</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </Modal>
-
-          <Modal
-            visible={isSubscriptionModalVisible}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setIsSubscriptionModalVisible(false)}>
-            <Pressable style={styles.subscriptionModalOverlay} onPress={() => setIsSubscriptionModalVisible(false)}>
-              <Pressable style={styles.subscriptionModalCard} onPress={() => null}>
-                <Text style={styles.subscriptionModalTitle}>{t("pro.managePlan")}</Text>
-                <Text style={styles.subscriptionModalSubtitle}>{hasProAccess ? t("pro.activePlan") : t("pro.freePlan")}</Text>
-
-                {subscriptionPlans.map((plan) => {
-                  const revenueCatPackage = revenueCatPackages[plan.id];
-                  return (
-                    <TouchableOpacity
-                      key={plan.id}
-                      style={[styles.subscriptionPlanButton, !revenueCatPackage && styles.subscriptionPlanButtonDisabled]}
-                      disabled={!revenueCatPackage || isRevenueCatLoading}
-                      onPress={() => {
-                        void handlePurchasePlan(plan.id);
-                      }}>
-                      <View>
-                        <Text style={styles.subscriptionPlanTitle}>{plan.label}</Text>
-                        <Text style={styles.subscriptionPlanPrice}>
-                          {revenueCatPackage?.product.priceString ?? t("pro.planUnavailable")}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color="#85788A" />
-                    </TouchableOpacity>
-                  );
-                })}
-
-                <TouchableOpacity
-                  style={styles.subscriptionActionButton}
-                  disabled={isRevenueCatLoading}
-                  onPress={() => {
-                    void handlePresentPaywall(false);
-                  }}>
-                  <Text style={styles.subscriptionActionButtonText}>{t("pro.openPaywall")}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.subscriptionActionButton}
-                  disabled={isRevenueCatLoading}
-                  onPress={() => {
-                    void handleRestoreSubscription();
-                  }}>
-                  <Text style={styles.subscriptionActionButtonText}>{t("pro.restorePurchases")}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.subscriptionActionButton}
-                  disabled={isRevenueCatLoading}
-                  onPress={() => {
-                    void handleOpenCustomerCenter();
-                  }}>
-                  <Text style={styles.subscriptionActionButtonText}>{t("pro.openCustomerCenter")}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.subscriptionCloseButton}
-                  disabled={isRevenueCatLoading}
-                  onPress={() => setIsSubscriptionModalVisible(false)}>
-                  <Text style={styles.subscriptionCloseButtonText}>{t("pro.close")}</Text>
-                </TouchableOpacity>
-              </Pressable>
-            </Pressable>
-          </Modal>
-        </ScrollView>
-      );
-    }
-
-    return (
-      <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.profileHeaderRow}>
-          <View style={styles.profileIdentityWrap}>
-            <View style={styles.profileAvatarLarge}>
-              <Text style={styles.profileAvatarLargeText}>{profileName[0].toUpperCase()}</Text>
-            </View>
-            <View>
-              <Text style={styles.profileName}>{profileName}</Text>
-              <Text style={styles.profileMetaText}>{profileGoals}</Text>
-              <Text style={styles.profilePlanText}>{hasProAccess ? t("pro.activePlan") : t("pro.freePlan")}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.profileSettingsIconButton} onPress={openEditProfile}>
-            <Ionicons name="settings-outline" size={22} color="#5D4F64" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.profileHeroCard}>
-          <Text style={styles.profileHeroTitle}>{t("profile.heroTitle")}</Text>
-          <Text style={styles.profileHeroSubtitle}>
-            {t("profile.heroSubtitle")}
-          </Text>
-        </View>
-
-        <View style={styles.profileStatsGrid}>
-          <View style={[styles.profileStatCard, styles.profileStatCardLavender]}>
-            <Text style={styles.profileStatTitle}>{t("profile.cycleLength")}</Text>
-            <Text style={styles.profileStatValue}>{t("profile.days", { count: cycleLength })}</Text>
-          </View>
-
-          <View style={[styles.profileStatCard, styles.profileStatCardPink]}>
-            <Text style={styles.profileStatTitle}>{t("profile.periodLength")}</Text>
-            <Text style={styles.profileStatValue}>{t("profile.days", { count: periodLength })}</Text>
-          </View>
-
-          <View style={[styles.profileStatCard, styles.profileStatCardMint]}>
-            <Text style={styles.profileStatTitle}>{t("profile.lastLogged")}</Text>
-            <Text style={styles.profileStatValueSmall}>{lastPeriodDate.toLocaleDateString(dateLocale)}</Text>
-          </View>
-
-          <View style={[styles.profileStatCard, styles.profileStatCardPeach]}>
-            <Text style={styles.profileStatTitle}>{t("profile.nextPeriod")}</Text>
-            <Text style={styles.profileStatValueSmall}>{cycleContext.nextPeriodStart.toLocaleDateString(dateLocale)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.profileMenuCard}>
-          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("insights")}>
-            <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>{t("profile.cycleInsights")}</Text>
-              <Text style={styles.profileMenuSubtitle}>{t("profile.cycleInsightsDesc")}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("tips")}>
-            <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>{t("profile.tipsWellbeing")}</Text>
-              <Text style={styles.profileMenuSubtitle}>{t("profile.tipsWellbeingDesc")}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setActiveTab("ai")}>
-            <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>{t("profile.aiAssistant")}</Text>
-              <Text style={styles.profileMenuSubtitle}>{t("profile.aiAssistantDesc")}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.profileMenuRow} onPress={() => setProfileView("settings")}>
-            <View style={styles.profileMenuLabelWrap}>
-              <Text style={styles.profileMenuTitle}>{t("profile.appSettings")}</Text>
-              <Text style={styles.profileMenuSubtitle}>{t("profile.appSettingsDesc")}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#877A8A" />
-          </TouchableOpacity>
-        </View>
-
-        <NumberAdjuster
-          label={t("profile.cycleLength")}
-          hint={t("profile.cycleLengthHint")}
-          value={cycleLength}
-          min={21}
-          max={40}
-          onChange={setCycleLength}
-        />
-
-        <NumberAdjuster
-          label={t("profile.periodLength")}
-          hint={t("profile.periodLengthHint")}
-          value={periodLength}
-          min={3}
-          max={10}
-          onChange={setPeriodLength}
-        />
-      </ScrollView>
-    );
-  };
-
   const renderTabContent = () => {
     if (activeTab === "home") {
-      return renderHomeTab();
+      return (
+        <HomeTabContent
+          dateLocale={dateLocale}
+          decoratedHomeDays={decoratedHomeDays}
+          hasProAccess={hasProAccess}
+          insightCards={insightCards}
+          monthLabel={monthLabel}
+          monthOptions={monthOptions}
+          name={name}
+          onPeriodStartsToday={handlePeriodStartsToday}
+          onProfilePress={() => setActiveTab("profile")}
+          onSelectCalendarDate={setSelectedCalendarDate}
+          onSelectMonthIndex={setSelectedMonthIndex}
+          renderPregnancyProbabilityCard={renderPregnancyProbabilityCard}
+          selectedCalendarDate={selectedCalendarDate}
+          selectedMonthIndex={selectedMonthIndex}
+          t={t}
+        />
+      );
     }
+
     if (activeTab === "insights") {
-      return renderInsightsTab();
+      return (
+        <InsightsTab
+          averageSymptomScore={averageSymptomScore}
+          currentMonthInsight={currentMonthInsight}
+          cycleLength={cycleLength}
+          dateLocale={dateLocale}
+          decoratedInsightsDays={decoratedInsightsDays}
+          hasProAccess={hasProAccess}
+          insightsMonthLabel={insightsMonthLabel}
+          monthOptions={monthOptions}
+          monthlyInsights={monthlyInsights}
+          onSelectCalendarDate={setSelectedCalendarDate}
+          onSelectInsightsMonthIndex={setSelectedInsightsMonthIndex}
+          periodLength={periodLength}
+          proInsightsSummary={proInsightsSummary}
+          renderPregnancyProbabilityCard={renderPregnancyProbabilityCard}
+          selectedCalendarDate={selectedCalendarDate}
+          selectedInsightsMonthIndex={selectedInsightsMonthIndex}
+          showProUpsell={() => showProUpsell("insights")}
+          t={t}
+        />
+      );
     }
+
     if (activeTab === "ai") {
-      return renderAiTab();
+      return (
+        <AiTab
+          aiInput={aiInput}
+          aiMessages={aiMessages}
+          aiMessagesScrollRef={aiMessagesScrollRef}
+          aiQuickPrompts={aiQuickPrompts}
+          freeAiRemaining={freeAiRemaining}
+          hasProAccess={hasProAccess}
+          isAiLockedForFree={isAiLockedForFree}
+          isAiTyping={isAiTyping}
+          onSendMessage={handleSendAiMessage}
+          onShowProUpsell={() => showProUpsell("ai")}
+          setAiInput={setAiInput}
+          t={t}
+        />
+      );
     }
+
     if (activeTab === "tips") {
-      return renderTipsTab();
+      return (
+        <TipsTab
+          activeBreathingStep={activeBreathingStep}
+          breathingGuideText={breathingGuideText}
+          breathingPhase={breathingPhase}
+          breathingRippleAnim={breathingRippleAnim}
+          breathingRoundText={breathingRoundText}
+          breathingScale={breathingScale}
+          breathingSecondsLeft={breathingSecondsLeft}
+          isBreathingRunning={isBreathingRunning}
+          name={name}
+          onOpenCheckInHistory={openCheckInHistory}
+          onSaveDailyCheckin={handleSaveDailyCheckin}
+          onSelectFlow={setSelectedFlow}
+          onStartBreathingSession={startBreathingSession}
+          onStopBreathingSession={stopBreathingSession}
+          onToggleMood={toggleMood}
+          selectedFlow={selectedFlow}
+          selectedMoods={selectedMoods}
+          symptomLogs={symptomLogs}
+          t={t}
+        />
+      );
     }
-    return renderProfileTab();
+
+    return (
+      <ProfileTab
+        cycleContext={cycleContext}
+        cycleLength={cycleLength}
+        dateLocale={dateLocale}
+        draftProfileName={draftProfileName}
+        goals={goals}
+        hasProAccess={hasProAccess}
+        healthSyncEnabled={healthSyncEnabled}
+        i18n={i18n}
+        insightNudgesEnabled={insightNudgesEnabled}
+        isDebugProOverrideEnabled={isDebugProOverrideEnabled}
+        isRevenueCatLoading={isRevenueCatLoading}
+        isSubscriptionModalVisible={isSubscriptionModalVisible}
+        languagePickerVisible={languagePickerVisible}
+        lastPeriodDate={lastPeriodDate}
+        name={name}
+        onCloseEditProfile={closeEditProfile}
+        onExportCycleData={() => {
+          void handleExportCycleData();
+        }}
+        onOpenCustomerCenter={handleOpenCustomerCenter}
+        onOpenEditProfile={openEditProfile}
+        onOpenSubscriptionModal={openSubscriptionModal}
+        onPresentPaywall={handlePresentPaywall}
+        onPurchasePlan={handlePurchasePlan}
+        onRestoreSubscription={handleRestoreSubscription}
+        onSaveProfileName={handleSaveProfileName}
+        onSetActiveTab={setActiveTab}
+        onSetCycleLength={setCycleLength}
+        onSetDebugProOverrideEnabled={setIsDebugProOverrideEnabled}
+        onSetDraftProfileName={setDraftProfileName}
+        onSetHealthSyncEnabled={setHealthSyncEnabled}
+        onSetInsightNudgesEnabled={setInsightNudgesEnabled}
+        onSetLanguagePickerVisible={setLanguagePickerVisible}
+        onSetPeriodLength={setPeriodLength}
+        onSetPinLockEnabled={setPinLockEnabled}
+        onSetProfileView={setProfileView}
+        onSetRemindersEnabled={setRemindersEnabled}
+        onSetSubscriptionModalVisible={setIsSubscriptionModalVisible}
+        periodLength={periodLength}
+        pinLockEnabled={pinLockEnabled}
+        profileView={profileView}
+        remindersEnabled={remindersEnabled}
+        revenueCatPackages={revenueCatPackages}
+        showProUpsell={showProUpsell}
+        t={t}
+      />
+    );
   };
 
   if (!isHydrated) {

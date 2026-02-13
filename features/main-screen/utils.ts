@@ -1,4 +1,3 @@
-import { DAY_MS } from "./index.constants";
 import type {
   CalendarDay,
   CycleContext,
@@ -6,7 +5,9 @@ import type {
   GoalOption,
   MonthlyInsight,
   PregnancyProbabilityDetail,
-} from "./index.types";
+} from "./types";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function startOfDay(date: Date): Date {
   const normalized = new Date(date);

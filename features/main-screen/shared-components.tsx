@@ -2,8 +2,8 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { styles } from "./index.styles";
-import type { NumberAdjusterProps } from "./index.types";
+import { styles } from "./styles";
+import type { NumberAdjusterProps } from "./types";
 
 export function DecorativeBackground() {
   return (

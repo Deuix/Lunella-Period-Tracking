@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "types": ["node"],
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": ".tmp-tests"
+  },
+  "include": [
+    "features/main-screen/utils.ts",
+    "features/main-screen/types.ts",
+    "tests/main-screen-utils.test.ts"
+  ]
+}

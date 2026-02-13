@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { RevenueCatPackagesMap } from "../services/revenuecat";
+import type { RevenueCatPackagesMap } from "../../services/revenuecat";
 import type {
   AiMessage,
   BreathStep,
@@ -8,9 +8,8 @@ import type {
   HomeTab,
   MenstrualFlowOption,
   MoodOption,
-} from "./index.types";
+} from "./types";
 
-export const DAY_MS = 24 * 60 * 60 * 1000;
 export const GOAL_OPTIONS: { id: GoalOption; labelKey: string }[] = [
   { id: "cycle_tracking", labelKey: "goals.cycleTracking" },
   { id: "trying_to_conceive", labelKey: "goals.tryingToConceive" },
