@@ -524,11 +524,6 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  profileAvatarText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "700",
-  },
   homeProBadge: {
     borderRadius: 10,
     backgroundColor: "#F7B84B",
@@ -2758,11 +2753,6 @@ export const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  newProfileAvatarText: {
-    color: "#FFFFFF",
-    fontSize: 28,
-    fontWeight: "800",
-  },
   newProfileEditButton: {
     position: "absolute",
     bottom: 0,
@@ -2915,28 +2905,26 @@ export const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
   },
-  newEditProfileAvatarText: {
-    color: "#FFFFFF",
-    fontSize: 34,
-    fontWeight: "800",
+  newAvatarOptionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 20,
   },
-  newEditProfileCameraButton: {
-    position: "absolute",
-    bottom: 4,
-    right: 4,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  newAvatarOptionButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: "#FFFFFF",
-    borderWidth: 2,
-    borderColor: "#8F72C5",
+    borderWidth: 1,
+    borderColor: "#E8DCEC",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+  },
+  newAvatarOptionButtonSelected: {
+    borderColor: "#8F72C5",
+    backgroundColor: "#F5EEFB",
   },
   newEditProfileSectionTitle: {
     fontSize: 18,

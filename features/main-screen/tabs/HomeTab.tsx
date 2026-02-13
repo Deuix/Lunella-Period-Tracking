@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-nativ
 import { WEEK_DAY_KEYS } from "../constants";
 import { styles } from "../styles";
 import { isSameDay, startOfDay } from "../utils";
-import type { DecoratedCalendarDay } from "../types";
+import type { DecoratedCalendarDay, ProfileAvatarIcon } from "../types";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -25,7 +25,7 @@ type HomeTabProps = {
   insightCards: InsightCard[];
   monthLabel: string;
   monthOptions: Date[];
-  name: string;
+  profileAvatarIcon: ProfileAvatarIcon;
   onPeriodStartsToday: () => void;
   onProfilePress: () => void;
   onSelectCalendarDate: (date: Date) => void;
@@ -43,7 +43,7 @@ export function HomeTab({
   insightCards,
   monthLabel,
   monthOptions,
-  name,
+  profileAvatarIcon,
   onPeriodStartsToday,
   onProfilePress,
   onSelectCalendarDate,
@@ -68,7 +68,7 @@ export function HomeTab({
         </View>
         <View style={styles.profileAvatarWrap}>
           <TouchableOpacity style={styles.profileAvatar} onPress={onProfilePress}>
-            <Text style={styles.profileAvatarText}>{(name.trim()[0] ?? "U").toUpperCase()}</Text>
+            <Ionicons name={profileAvatarIcon} size={22} color="#FFFFFF" />
           </TouchableOpacity>
           {hasProAccess && (
             <View style={styles.homeProBadgeWrap}>

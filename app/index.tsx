@@ -38,6 +38,7 @@ import {
   BREATHING_STEPS,
   BREATHING_TOTAL_ROUNDS,
   DEFAULT_CYCLE_LENGTH,
+  DEFAULT_PROFILE_AVATAR_ICON,
   DEFAULT_PERIOD_LENGTH,
   DEFAULT_SELECTED_FLOW,
   GOAL_OPTIONS,
@@ -45,6 +46,7 @@ import {
   MENSTRUAL_FLOW_OPTIONS,
   MOOD_OPTIONS,
   NAV_ITEMS,
+  PROFILE_AVATAR_OPTIONS,
   WEEK_DAY_KEYS,
 } from "../features/main-screen/constants";
 import {
@@ -66,6 +68,7 @@ import type {
   GoalOption,
   HomeTab,
   PersistedAppState,
+  ProfileAvatarIcon,
   ProfileView,
   ProUpsellSource,
   SymptomLogEntry,
@@ -86,7 +89,9 @@ export default function Index() {
   const [isProSuccessVisible, setIsProSuccessVisible] = useState(false);
 
   const [name, setName] = useState("");
+  const [profileAvatarIcon, setProfileAvatarIcon] = useState<ProfileAvatarIcon>(DEFAULT_PROFILE_AVATAR_ICON);
   const [draftProfileName, setDraftProfileName] = useState("");
+  const [draftProfileAvatarIcon, setDraftProfileAvatarIcon] = useState<ProfileAvatarIcon>(DEFAULT_PROFILE_AVATAR_ICON);
   const [goals, setGoals] = useState<GoalOption[]>([]);
   const [lastPeriodDate, setLastPeriodDate] = useState(startOfDay(new Date()));
   const [cycleLength, setCycleLength] = useState(DEFAULT_CYCLE_LENGTH);
@@ -187,6 +192,13 @@ export default function Index() {
         }
         if (typeof storedState.name === "string") {
           setName(storedState.name);
+        }
+        if (
+          typeof storedState.profileAvatarIcon === "string"
+          && PROFILE_AVATAR_OPTIONS.includes(storedState.profileAvatarIcon as ProfileAvatarIcon)
+        ) {
+          setProfileAvatarIcon(storedState.profileAvatarIcon as ProfileAvatarIcon);
+          setDraftProfileAvatarIcon(storedState.profileAvatarIcon as ProfileAvatarIcon);
         }
         if (Array.isArray(storedState.goals)) {
           setGoals(storedState.goals.filter((goal) => GOAL_OPTIONS.some((option) => option.id === goal)) as GoalOption[]);
@@ -436,6 +448,7 @@ export default function Index() {
     const persistedState: PersistedAppState = {
       isOnboardingDone,
       name,
+      profileAvatarIcon,
       goals,
       lastPeriodDateISO: lastPeriodDate.toISOString(),
       cycleLength,
@@ -467,6 +480,7 @@ export default function Index() {
     isPro,
     lastPeriodDate,
     name,
+    profileAvatarIcon,
     periodLength,
     pinLockEnabled,
     remindersEnabled,
@@ -604,13 +618,15 @@ export default function Index() {
 
   const openEditProfile = useCallback(() => {
     setDraftProfileName(name.trim());
+    setDraftProfileAvatarIcon(profileAvatarIcon);
     setProfileView("edit_profile");
-  }, [name]);
+  }, [name, profileAvatarIcon]);
 
   const closeEditProfile = useCallback(() => {
     setDraftProfileName(name.trim());
+    setDraftProfileAvatarIcon(profileAvatarIcon);
     setProfileView("main");
-  }, [name]);
+  }, [name, profileAvatarIcon]);
 
   const handleSaveProfileName = useCallback(() => {
     const trimmedName = draftProfileName.trim();
@@ -621,9 +637,10 @@ export default function Index() {
     }
 
     setName(trimmedName);
+    setProfileAvatarIcon(draftProfileAvatarIcon);
     setProfileView("main");
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [draftProfileName, t]);
+  }, [draftProfileAvatarIcon, draftProfileName, t]);
 
   const handleDeleteAllData = useCallback(() => {
     Alert.alert(t("settings.deleteAllDataTitle"), t("settings.deleteAllDataMessage"), [
@@ -643,7 +660,9 @@ export default function Index() {
               setIsOnboardingDone(false);
               setStep(0);
               setName("");
+              setProfileAvatarIcon(DEFAULT_PROFILE_AVATAR_ICON);
               setDraftProfileName("");
+              setDraftProfileAvatarIcon(DEFAULT_PROFILE_AVATAR_ICON);
               setGoals([]);
               setLastPeriodDate(today);
               setCycleLength(DEFAULT_CYCLE_LENGTH);
@@ -1338,7 +1357,7 @@ export default function Index() {
           insightCards={insightCards}
           monthLabel={monthLabel}
           monthOptions={monthOptions}
-          name={name}
+          profileAvatarIcon={profileAvatarIcon}
           onPeriodStartsToday={handlePeriodStartsToday}
           onProfilePress={() => setActiveTab("profile")}
           onSelectCalendarDate={setSelectedCalendarDate}
@@ -1419,6 +1438,7 @@ export default function Index() {
         cycleLength={cycleLength}
         dateLocale={dateLocale}
         draftProfileName={draftProfileName}
+        draftProfileAvatarIcon={draftProfileAvatarIcon}
         goals={goals}
         hasProAccess={hasProAccess}
         healthSyncEnabled={healthSyncEnabled}
@@ -1430,6 +1450,7 @@ export default function Index() {
         languagePickerVisible={languagePickerVisible}
         lastPeriodDate={lastPeriodDate}
         name={name}
+        profileAvatarIcon={profileAvatarIcon}
         onCloseEditProfile={closeEditProfile}
         onDeleteAllData={handleDeleteAllData}
         onExportCycleData={() => {
@@ -1446,6 +1467,7 @@ export default function Index() {
         onSetCycleLength={setCycleLength}
         onSetDebugProOverrideEnabled={setIsDebugProOverrideEnabled}
         onSetDraftProfileName={setDraftProfileName}
+        onSetDraftProfileAvatarIcon={setDraftProfileAvatarIcon}
         onSetHealthSyncEnabled={setHealthSyncEnabled}
         onSetInsightNudgesEnabled={setInsightNudgesEnabled}
         onSetLanguagePickerVisible={setLanguagePickerVisible}

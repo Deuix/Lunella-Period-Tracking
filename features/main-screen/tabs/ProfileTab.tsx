@@ -13,10 +13,10 @@ import {
 } from "react-native";
 import { persistLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "../../../i18n";
 import type { RevenueCatPackagesMap, RevenueCatPlanId } from "../../../services/revenuecat";
-import { GOAL_OPTIONS } from "../constants";
+import { GOAL_OPTIONS, PROFILE_AVATAR_OPTIONS } from "../constants";
 import { NumberAdjuster } from "../shared-components";
 import { styles } from "../styles";
-import type { CycleContext, GoalOption, HomeTab, ProfileView } from "../types";
+import type { CycleContext, GoalOption, HomeTab, ProfileAvatarIcon, ProfileView } from "../types";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -24,6 +24,7 @@ type ProfileTabProps = {
   cycleContext: CycleContext;
   cycleLength: number;
   dateLocale: string;
+  draftProfileAvatarIcon: ProfileAvatarIcon;
   draftProfileName: string;
   goals: GoalOption[];
   hasProAccess: boolean;
@@ -36,6 +37,7 @@ type ProfileTabProps = {
   languagePickerVisible: boolean;
   lastPeriodDate: Date;
   name: string;
+  profileAvatarIcon: ProfileAvatarIcon;
   onCloseEditProfile: () => void;
   onDeleteAllData: () => void;
   onExportCycleData: () => void;
@@ -49,6 +51,7 @@ type ProfileTabProps = {
   onSetActiveTab: (tab: HomeTab) => void;
   onSetCycleLength: (value: number) => void;
   onSetDebugProOverrideEnabled: (enabled: boolean) => void;
+  onSetDraftProfileAvatarIcon: (icon: ProfileAvatarIcon) => void;
   onSetDraftProfileName: (name: string) => void;
   onSetHealthSyncEnabled: (enabled: boolean) => void;
   onSetInsightNudgesEnabled: (enabled: boolean) => void;
@@ -196,6 +199,7 @@ export function ProfileTab({
   cycleContext,
   cycleLength,
   dateLocale,
+  draftProfileAvatarIcon,
   draftProfileName,
   goals,
   hasProAccess,
@@ -208,6 +212,7 @@ export function ProfileTab({
   languagePickerVisible,
   lastPeriodDate,
   name,
+  profileAvatarIcon,
   onCloseEditProfile,
   onDeleteAllData,
   onExportCycleData,
@@ -221,6 +226,7 @@ export function ProfileTab({
   onSetActiveTab,
   onSetCycleLength,
   onSetDebugProOverrideEnabled,
+  onSetDraftProfileAvatarIcon,
   onSetDraftProfileName,
   onSetHealthSyncEnabled,
   onSetInsightNudgesEnabled,
@@ -274,8 +280,6 @@ export function ProfileTab({
 
   // EDIT PROFILE VIEW
   if (profileView === "edit_profile") {
-    const editNamePreview = draftProfileName.trim() || profileName;
-
     return (
       <View style={styles.newProfileContainer}>
         <View style={styles.newProfileHeader}>
@@ -292,11 +296,31 @@ export function ProfileTab({
           showsVerticalScrollIndicator={false}>
           <View style={styles.newEditProfileAvatarWrap}>
             <View style={styles.newEditProfileAvatar}>
-              <Text style={styles.newEditProfileAvatarText}>{editNamePreview[0].toUpperCase()}</Text>
+              <Ionicons name={draftProfileAvatarIcon} size={40} color="#FFFFFF" />
             </View>
-            <TouchableOpacity style={styles.newEditProfileCameraButton}>
-              <Ionicons name="camera" size={18} color="#8F72C5" />
-            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.newEditProfileSectionTitle}>{t("profile.avatarLabel")}</Text>
+          <View style={styles.newAvatarOptionsGrid}>
+            {PROFILE_AVATAR_OPTIONS.map((avatarIcon) => {
+              const isSelected = avatarIcon === draftProfileAvatarIcon;
+
+              return (
+                <TouchableOpacity
+                  key={avatarIcon}
+                  style={[
+                    styles.newAvatarOptionButton,
+                    isSelected && styles.newAvatarOptionButtonSelected,
+                  ]}
+                  onPress={() => onSetDraftProfileAvatarIcon(avatarIcon)}>
+                  <Ionicons
+                    name={avatarIcon}
+                    size={24}
+                    color={isSelected ? "#8F72C5" : "#7A6D82"}
+                  />
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <Text style={styles.newEditProfileSectionTitle}>{t("profile.editProfileSectionTitle")}</Text>
@@ -654,7 +678,7 @@ export function ProfileTab({
           <View style={styles.newProfileHeaderTop}>
             <View style={styles.newProfileAvatarWrap}>
               <View style={styles.newProfileAvatar}>
-                <Text style={styles.newProfileAvatarText}>{profileName[0].toUpperCase()}</Text>
+                <Ionicons name={profileAvatarIcon} size={34} color="#FFFFFF" />
               </View>
               <TouchableOpacity
                 style={styles.newProfileEditButton}

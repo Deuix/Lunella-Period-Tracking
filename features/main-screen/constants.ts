@@ -8,6 +8,7 @@ import type {
   HomeTab,
   MenstrualFlowOption,
   MoodOption,
+  ProfileAvatarIcon,
 } from "./types";
 
 export const GOAL_OPTIONS: { id: GoalOption; labelKey: string }[] = [
@@ -80,6 +81,15 @@ export const FREE_AI_DAILY_LIMIT = 3;
 export const DEFAULT_CYCLE_LENGTH = 28;
 export const DEFAULT_PERIOD_LENGTH = 5;
 export const DEFAULT_SELECTED_FLOW = "medium";
+export const PROFILE_AVATAR_OPTIONS: ProfileAvatarIcon[] = [
+  "flower",
+  "flower-outline",
+  "rose",
+  "rose-outline",
+  "leaf",
+  "leaf-outline",
+];
+export const DEFAULT_PROFILE_AVATAR_ICON: ProfileAvatarIcon = "flower";
 export const EMPTY_REVENUECAT_PACKAGES: RevenueCatPackagesMap = {
   monthly: null,
   yearly: null,

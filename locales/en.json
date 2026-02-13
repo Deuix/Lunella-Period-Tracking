@@ -308,6 +308,7 @@
     "appSettings": "App settings",
     "appSettingsDesc": "Notifications, privacy, integrations",
     "editProfileTitle": "Edit profile",
+    "avatarLabel": "Avatar",
     "editProfileSectionTitle": "Personal details",
     "editProfileHint": "Update how your name appears across the app.",
     "nameLabel": "Name",

@@ -3,6 +3,7 @@ export type HomeTab = "home" | "insights" | "ai" | "tips" | "profile";
 export type DayCategory = "period" | "ovulation" | "fertility" | "normal";
 export type BreathPhase = "ready" | "inhale" | "hold" | "exhale" | "done";
 export type ProfileView = "main" | "settings" | "edit_profile";
+export type ProfileAvatarIcon = "flower" | "flower-outline" | "rose" | "rose-outline" | "leaf" | "leaf-outline";
 
 export type AiMessage = {
   id: string;
@@ -22,6 +23,7 @@ export type ProUpsellSource = "ai" | "insights" | "export" | "health_sync" | "pa
 export type PersistedAppState = {
   isOnboardingDone: boolean;
   name: string;
+  profileAvatarIcon: ProfileAvatarIcon;
   goals: GoalOption[];
   lastPeriodDateISO: string;
   cycleLength: number;
