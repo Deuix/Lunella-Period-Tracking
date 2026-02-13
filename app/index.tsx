@@ -2736,7 +2736,10 @@ export default function Index() {
             </View>
           </View>
           
-          <View style={styles.tipsGrid}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tipsGridScroll}>
             {GIRL_TIPS.map((tip, index) => {
               const tipIcons: { [key: string]: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; bgColor: string } } = {
                 "girlTips.tip1Title": { icon: "tea", color: "#D4587A", bgColor: "#FCEEF4" },
@@ -2748,28 +2751,18 @@ export default function Index() {
               const tipStyle = tipIcons[tip.titleKey] || { icon: "lightbulb", color: "#8F72C5", bgColor: "#F0E8FA" };
               
               return (
-                <Pressable
-                  key={tip.titleKey}
-                  style={[styles.tipCardNew, index % 2 === 0 && styles.tipCardLeft]}>
+                <View key={tip.titleKey} style={styles.tipCardNew}>
                   <View style={[styles.tipIconCircle, { backgroundColor: tipStyle.bgColor }]}>
-                    <MaterialCommunityIcons name={tipStyle.icon} size={24} color={tipStyle.color} />
+                    <MaterialCommunityIcons name={tipStyle.icon} size={28} color={tipStyle.color} />
                   </View>
                   <View style={styles.tipContent}>
                     <Text style={styles.tipTitleNew}>{t(tip.titleKey)}</Text>
                     <Text style={styles.tipDetailNew}>{t(tip.detailKey)}</Text>
                   </View>
-                  <View style={styles.tipArrow}>
-                    <Ionicons name="chevron-forward" size={16} color="#C5B8D8" />
-                  </View>
-                </Pressable>
+                </View>
               );
             })}
-          </View>
-
-          <Pressable style={styles.tipsMoreButton}>
-            <Text style={styles.tipsMoreButtonText}>{t("tips.seeAllTips")}</Text>
-            <Ionicons name="arrow-forward" size={16} color="#8F72C5" />
-          </Pressable>
+          </ScrollView>
         </View>
 
         <LinearGradient
@@ -6032,14 +6025,18 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
   },
+  tipsGridScroll: {
+    paddingHorizontal: 4,
+    gap: 12,
+  },
   tipCardNew: {
-    width: "48%",
+    width: 155,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#E7DCE6",
     backgroundColor: "#FFFFFF",
-    padding: 16,
-    gap: 12,
+    padding: 12,
+    gap: 10,
   },
   tipCardLeft: {
     width: "100%",

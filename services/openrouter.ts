@@ -18,6 +18,14 @@ type OpenRouterResponse = {
   };
 };
 
+type OpenRouterStreamChunk = {
+  choices?: Array<{
+    delta?: {
+      content?: string | OpenRouterContentPart[];
+    };
+  }>;
+};
+
 const DEFAULT_OPENROUTER_MODEL = "openai/gpt-4o-mini";
 const DEFAULT_PROXY_FUNCTION_NAME = "openrouter-proxy-public";
 
@@ -52,6 +60,47 @@ function extractAssistantText(content: string | OpenRouterContentPart[] | undefi
     .filter(Boolean)
     .join("\n")
     .trim();
+}
+
+function extractStreamDeltaText(content: string | OpenRouterContentPart[] | undefined): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content
+    .map((part) => part.text ?? "")
+    .join("");
+}
+
+function collectTextFromSseLines(lines: string[]): string {
+  let fullText = "";
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line === "data: [DONE]") {
+      continue;
+    }
+
+    if (!line.startsWith("data: ")) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(line.slice(6)) as OpenRouterStreamChunk;
+      const delta = extractStreamDeltaText(parsed?.choices?.[0]?.delta?.content);
+      if (delta) {
+        fullText += delta;
+      }
+    } catch {
+      // Skip malformed JSON chunks.
+    }
+  }
+
+  return fullText;
 }
 
 export async function getOpenRouterChatReply(
@@ -162,37 +211,60 @@ export async function streamOpenRouterChatReply(
 
   const reader = response.body?.getReader();
   if (!reader) {
-    throw new Error("STREAM_NOT_SUPPORTED");
+    // React Native fetch can lack ReadableStream support. Fall back to parsing
+    // the buffered response payload (or one non-stream request if needed).
+    const rawResponse = await response.text();
+
+    let jsonPayload: OpenRouterResponse | null = null;
+    try {
+      jsonPayload = JSON.parse(rawResponse) as OpenRouterResponse;
+    } catch {
+      jsonPayload = null;
+    }
+
+    const nonStreamText = extractAssistantText(jsonPayload?.choices?.[0]?.message?.content);
+    if (nonStreamText) {
+      onToken(nonStreamText);
+      return nonStreamText;
+    }
+
+    const sseText = collectTextFromSseLines(rawResponse.split(/\r?\n/));
+    if (sseText) {
+      onToken(sseText);
+      return sseText;
+    }
+
+    const fallbackText = await getOpenRouterChatReply(messages);
+    onToken(fallbackText);
+    return fallbackText;
   }
 
   const decoder = new TextDecoder();
   let fullText = "";
+  let pending = "";
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n");
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
 
-      for (const line of lines) {
-        if (!line.trim() || line.trim() === "data: [DONE]") continue;
-        if (!line.startsWith("data: ")) continue;
+      const nextText = collectTextFromSseLines(lines);
+      if (nextText) {
+        fullText += nextText;
+        onToken(nextText);
+      }
+    }
 
-        try {
-          const jsonStr = line.slice(6); // Remove "data: " prefix
-          const parsed = JSON.parse(jsonStr);
-          const delta = parsed?.choices?.[0]?.delta?.content;
-
-          if (delta) {
-            fullText += delta;
-            onToken(delta);
-          }
-        } catch (e) {
-          // Skip malformed JSON chunks
-          continue;
-        }
+    const tail = `${pending}${decoder.decode()}`;
+    if (tail.trim()) {
+      const tailText = collectTextFromSseLines(tail.split(/\r?\n/));
+      if (tailText) {
+        fullText += tailText;
+        onToken(tailText);
       }
     }
   } finally {
@@ -200,7 +272,9 @@ export async function streamOpenRouterChatReply(
   }
 
   if (!fullText) {
-    throw new Error("OPENROUTER_EMPTY_RESPONSE");
+    const fallbackText = await getOpenRouterChatReply(messages);
+    onToken(fallbackText);
+    return fallbackText;
   }
 
   return fullText;
