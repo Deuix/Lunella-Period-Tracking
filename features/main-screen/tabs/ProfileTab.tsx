@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -36,6 +37,7 @@ type ProfileTabProps = {
   lastPeriodDate: Date;
   name: string;
   onCloseEditProfile: () => void;
+  onDeleteAllData: () => void;
   onExportCycleData: () => void;
   onOpenCustomerCenter: () => Promise<void>;
   onOpenEditProfile: () => void;
@@ -82,6 +84,7 @@ export function ProfileTab({
   lastPeriodDate,
   name,
   onCloseEditProfile,
+  onDeleteAllData,
   onExportCycleData,
   onOpenCustomerCenter,
   onOpenEditProfile,
@@ -126,6 +129,17 @@ export function ProfileTab({
     { id: "yearly", label: t("pro.planYearly") },
     { id: "lifetime", label: t("pro.planLifetime") },
   ];
+  const openTermsAndConditions = () => {
+    Alert.alert(t("settings.termsConditions"), t("settings.termsConditionsBody"));
+  };
+
+  const openPrivacyPolicy = () => {
+    Alert.alert(t("settings.privacyPolicy"), t("settings.privacyPolicyBody"));
+  };
+
+  const openHelpSupport = () => {
+    Alert.alert(t("settings.helpSupport"), t("settings.helpSupportBody"));
+  };
 
   if (profileView === "edit_profile") {
     const editNamePreview = draftProfileName.trim() || profileName;
@@ -191,6 +205,30 @@ export function ProfileTab({
           </TouchableOpacity>
           <Text style={styles.settingsHeaderTitle}>{t("settings.title")}</Text>
           <View style={styles.settingsHeaderSpacer} />
+        </View>
+
+        <View style={styles.settingsCard}>
+          <Text style={styles.settingsSectionTitle}>{t("settings.account")}</Text>
+
+          <TouchableOpacity style={styles.settingsNavRow} onPress={onOpenEditProfile}>
+            <View style={styles.settingsNavTextWrap}>
+              <Text style={styles.settingsRowTitle}>{t("settings.editProfile")}</Text>
+              <Text style={styles.settingsRowSubtitle}>{t("settings.editProfileDesc")}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#85788A" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingsNavRow} onPress={onDeleteAllData}>
+            <View style={styles.settingsNavTextWrap}>
+              <Text style={[styles.settingsRowTitle, styles.settingsDangerText]}>
+                {t("settings.deleteAllData")}
+              </Text>
+              <Text style={[styles.settingsRowSubtitle, styles.settingsDangerText]}>
+                {t("settings.deleteAllDataDesc")}
+              </Text>
+            </View>
+            <Ionicons name="trash-outline" size={16} color="#C25069" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.settingsCard}>
@@ -314,9 +352,29 @@ export function ProfileTab({
             <Ionicons name="chevron-forward" size={16} color="#85788A" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.settingsNavRow}>
+          <TouchableOpacity style={styles.settingsNavRow} onPress={openHelpSupport}>
             <Text style={styles.settingsRowTitle}>{t("settings.helpSupport")}</Text>
             <Ionicons name="chevron-forward" size={16} color="#85788A" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.settingsCard}>
+          <Text style={styles.settingsSectionTitle}>{t("settings.legal")}</Text>
+
+          <TouchableOpacity style={styles.settingsNavRow} onPress={openTermsAndConditions}>
+            <View style={styles.settingsNavTextWrap}>
+              <Text style={styles.settingsRowTitle}>{t("settings.termsConditions")}</Text>
+              <Text style={styles.settingsRowSubtitle}>{t("settings.termsConditionsDesc")}</Text>
+            </View>
+            <Ionicons name="document-text-outline" size={16} color="#85788A" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingsNavRow} onPress={openPrivacyPolicy}>
+            <View style={styles.settingsNavTextWrap}>
+              <Text style={styles.settingsRowTitle}>{t("settings.privacyPolicy")}</Text>
+              <Text style={styles.settingsRowSubtitle}>{t("settings.privacyPolicyDesc")}</Text>
+            </View>
+            <Ionicons name="shield-checkmark-outline" size={16} color="#85788A" />
           </TouchableOpacity>
         </View>
 
@@ -448,7 +506,9 @@ export function ProfileTab({
           </View>
         </View>
 
-        <TouchableOpacity style={styles.profileSettingsIconButton} onPress={onOpenEditProfile}>
+        <TouchableOpacity
+          style={styles.profileSettingsIconButton}
+          onPress={() => onSetProfileView("settings")}>
           <Ionicons name="settings-outline" size={22} color="#5D4F64" />
         </TouchableOpacity>
       </View>

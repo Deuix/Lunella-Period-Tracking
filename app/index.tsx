@@ -41,6 +41,7 @@ import {
   DEFAULT_PERIOD_LENGTH,
   DEFAULT_SELECTED_FLOW,
   GOAL_OPTIONS,
+  INITIAL_AI_MESSAGES,
   MENSTRUAL_FLOW_OPTIONS,
   MOOD_OPTIONS,
   NAV_ITEMS,
@@ -642,6 +643,69 @@ export default function Index() {
     setProfileView("main");
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [draftProfileName, t]);
+
+  const handleDeleteAllData = useCallback(() => {
+    Alert.alert(t("settings.deleteAllDataTitle"), t("settings.deleteAllDataMessage"), [
+      {
+        text: t("languagePicker.cancel"),
+        style: "cancel",
+      },
+      {
+        text: t("settings.deleteAllDataConfirm"),
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            try {
+              const today = startOfDay(new Date());
+              await AsyncStorage.removeItem(APP_STATE_STORAGE_KEY);
+
+              setIsOnboardingDone(false);
+              setStep(0);
+              setName("");
+              setDraftProfileName("");
+              setGoals([]);
+              setLastPeriodDate(today);
+              setCycleLength(DEFAULT_CYCLE_LENGTH);
+              setPeriodLength(DEFAULT_PERIOD_LENGTH);
+              setRemindersEnabled(true);
+              setOnboardingMonth(startOfMonth(today));
+              setActiveTab("home");
+              setProfileView("main");
+              setSelectedFlow(DEFAULT_SELECTED_FLOW);
+              setSelectedMoods([]);
+              setBreathingPhase("ready");
+              setBreathingSecondsLeft(0);
+              setBreathingRound(0);
+              setBreathingStepIndex(null);
+              setInsightNudgesEnabled(true);
+              setHealthSyncEnabled(false);
+              setPinLockEnabled(false);
+              setSymptomLogs([]);
+              setLanguagePickerVisible(false);
+              setCheckInHistoryVisible(false);
+              setSelectedHistoryEntryId(null);
+              setSelectedMonthIndex(2);
+              setSelectedInsightsMonthIndex(2);
+              setSelectedCalendarDate(today);
+              setIsPro(false);
+              setIsDebugProOverrideEnabled(false);
+              setIsSubscriptionModalVisible(false);
+              setIsProSuccessVisible(false);
+              setAiInput("");
+              setAiMessages(INITIAL_AI_MESSAGES);
+              setAiUsageDateISO(today.toISOString());
+              setAiUsageCount(0);
+
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert(t("settings.deleteAllDataDoneTitle"), t("settings.deleteAllDataDoneMessage"));
+            } catch {
+              Alert.alert(t("settings.deleteAllDataErrorTitle"), t("settings.deleteAllDataErrorMessage"));
+            }
+          })();
+        },
+      },
+    ]);
+  }, [setAiInput, setAiMessages, setAiUsageCount, setAiUsageDateISO, t]);
 
   const proInsightsSummary = useMemo(() => {
     if (recentSymptomLogs.length === 0) {
@@ -1395,6 +1459,7 @@ export default function Index() {
         lastPeriodDate={lastPeriodDate}
         name={name}
         onCloseEditProfile={closeEditProfile}
+        onDeleteAllData={handleDeleteAllData}
         onExportCycleData={() => {
           void handleExportCycleData();
         }}

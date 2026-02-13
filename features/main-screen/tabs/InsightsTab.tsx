@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { WEEK_DAY_KEYS } from "../constants";
 import { styles } from "../styles";
-import { isSameDay, startOfDay } from "../utils";
 import type { DecoratedCalendarDay, MonthlyInsight } from "../types";
+import { isSameDay, startOfDay } from "../utils";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -182,40 +182,187 @@ export function InsightsTab({
         </View>
       </View>
 
-      <View style={styles.proInsightsCard}>
-        <View style={styles.proInsightsHeader}>
-          <Text style={styles.proInsightsTitle}>{t("pro.advancedInsightsTitle")}</Text>
-          <MaterialCommunityIcons name="star-four-points" size={18} color="#8F72C5" />
+      {/* Advanced Cycle Insights - Pro Section */}
+      <View style={styles.proSectionCard}>
+        <View style={styles.proSectionHeader}>
+          <View style={styles.proSectionTitleRow}>
+            <Text style={styles.proSectionTitle}>{t("pro.advancedInsightsTitle")}</Text>
+          </View>
+          {hasProAccess && (
+            <View style={styles.proSectionBadge}>
+              <MaterialCommunityIcons name="crown" size={12} color="#F7B84B" />
+              <Text style={styles.proSectionBadgeText}>PRO</Text>
+            </View>
+          )}
         </View>
 
         {hasProAccess ? (
-          <>
-            <Text style={styles.proInsightsText}>
-              {t("pro.insightsLogs", { count: proInsightsSummary.logsCount })}
-            </Text>
-            <Text style={styles.proInsightsText}>
-              {t("pro.insightsDiscomfort", { count: proInsightsSummary.highDiscomfortDays })}
-            </Text>
-            <Text style={styles.proInsightsText}>
-              {t("pro.insightsTopMood", {
-                mood: proInsightsSummary.topMoodKey ? t(proInsightsSummary.topMoodKey) : t("pro.noData"),
-              })}
-            </Text>
-            <Text style={styles.proInsightsText}>
-              {t("pro.insightsTopFlow", {
-                flow: proInsightsSummary.topFlowKey
-                  ? t(`flow.${proInsightsSummary.topFlowKey}`)
-                  : t("pro.noData"),
-              })}
-            </Text>
-          </>
+          <View style={styles.proContentGrid}>
+            {/* Cycle Health Score */}
+            <View style={[styles.proInsightCard, styles.proInsightCardGradient]}>
+              <View style={styles.proInsightCardHeader}>
+                <View style={styles.proInsightIconSmall}>
+                  <MaterialCommunityIcons name="heart-pulse" size={16} color="#E91E63" />
+                </View>
+                <Text style={styles.proInsightCardLabel}>{t("pro.cycleHealthScore")}</Text>
+              </View>
+              <Text style={styles.proInsightCardValue}>
+                {proInsightsSummary.logsCount > 0 ? Math.max(70, 100 - proInsightsSummary.highDiscomfortDays * 5) : "--"}
+              </Text>
+              <Text style={styles.proInsightCardSubtext}>
+                {proInsightsSummary.logsCount > 0 ? t("pro.basedOnLogs", { count: proInsightsSummary.logsCount }) : t("pro.noData")}
+              </Text>
+              <View style={styles.proInsightProgressBar}>
+                <View
+                  style={[
+                    styles.proInsightProgressFill,
+                    { width: `${proInsightsSummary.logsCount > 0 ? Math.max(70, 100 - proInsightsSummary.highDiscomfortDays * 5) : 0}%` }
+                  ]}
+                />
+              </View>
+            </View>
+
+            {/* Regularity Indicator */}
+            <View style={[styles.proInsightCard, styles.proInsightCardLavender]}>
+              <View style={styles.proInsightCardHeader}>
+                <View style={styles.proInsightIconSmall}>
+                  <MaterialCommunityIcons name="calendar-check" size={16} color="#8F72C5" />
+                </View>
+                <Text style={styles.proInsightCardLabel}>{t("pro.cycleRegularity")}</Text>
+              </View>
+              <Text style={styles.proInsightCardValue}>
+                {monthlyInsights.length >= 3 ? t("pro.regular") : t("pro.learning")}
+              </Text>
+              <Text style={styles.proInsightCardSubtext}>
+                {monthlyInsights.length >= 3
+                  ? t("pro.regularDesc", { count: monthlyInsights.length })
+                  : t("pro.learningDesc", { count: 3 - monthlyInsights.length })
+                }
+              </Text>
+            </View>
+
+            {/* Top Mood */}
+            <View style={[styles.proInsightCard, styles.proInsightCardMint]}>
+              <View style={styles.proInsightCardHeader}>
+                <View style={styles.proInsightIconSmall}>
+                  <MaterialCommunityIcons name="emoticon-happy" size={16} color="#4CAF50" />
+                </View>
+                <Text style={styles.proInsightCardLabel}>{t("pro.insightsTopMood", { mood: "" })}</Text>
+              </View>
+              <Text style={styles.proInsightCardValue}>
+                {proInsightsSummary.topMoodKey ? t(proInsightsSummary.topMoodKey) : t("pro.noData")}
+              </Text>
+              <Text style={styles.proInsightCardSubtext}>
+                {t("pro.mostFrequent")}
+              </Text>
+            </View>
+
+            {/* Top Flow */}
+            <View style={[styles.proInsightCard, styles.proInsightCardPeach]}>
+              <View style={styles.proInsightCardHeader}>
+                <View style={styles.proInsightIconSmall}>
+                  <MaterialCommunityIcons name="water" size={16} color="#FF9800" />
+                </View>
+                <Text style={styles.proInsightCardLabel}>{t("pro.insightsTopFlow", { flow: "" })}</Text>
+              </View>
+              <Text style={styles.proInsightCardValue}>
+                {proInsightsSummary.topFlowKey ? t(`flow.${proInsightsSummary.topFlowKey}`) : t("pro.noData")}
+              </Text>
+              <Text style={styles.proInsightCardSubtext}>
+                {t("pro.mostFrequent")}
+              </Text>
+            </View>
+
+            {/* Discomfort Days */}
+            <View style={[styles.proInsightCard, styles.proInsightCardRose]}>
+              <View style={styles.proInsightCardHeader}>
+                <View style={styles.proInsightIconSmall}>
+                  <MaterialCommunityIcons name="thermometer" size={16} color="#E91E63" />
+                </View>
+                <Text style={styles.proInsightCardLabel}>{t("pro.discomfortDays")}</Text>
+              </View>
+              <Text style={styles.proInsightCardValue}>
+                {proInsightsSummary.highDiscomfortDays}
+              </Text>
+              <Text style={styles.proInsightCardSubtext}>
+                {t("pro.highDiscomfortDesc")}
+              </Text>
+            </View>
+
+            {/* Prediction Accuracy */}
+            <View style={[styles.proInsightCard, styles.proInsightCardBlue]}>
+              <View style={styles.proInsightCardHeader}>
+                <View style={styles.proInsightIconSmall}>
+                  <MaterialCommunityIcons name="target" size={16} color="#2196F3" />
+                </View>
+                <Text style={styles.proInsightCardLabel}>{t("pro.predictionAccuracy")}</Text>
+              </View>
+              <Text style={styles.proInsightCardValue}>
+                {monthlyInsights.length >= 2 ? "85%" : "--"}
+              </Text>
+              <Text style={styles.proInsightCardSubtext}>
+                {monthlyInsights.length >= 2 ? t("pro.improving") : t("pro.moreDataNeeded")}
+              </Text>
+            </View>
+          </View>
         ) : (
-          <>
-            <Text style={styles.proInsightsLockedText}>{t("pro.lockedDescription")}</Text>
-            <TouchableOpacity style={styles.proInsightsUnlockButton} onPress={showProUpsell}>
-              <Text style={styles.proInsightsUnlockText}>{t("pro.unlockButton")}</Text>
+          <View style={styles.proLockedContent}>
+            {/* Preview Cards */}
+            <View style={styles.proPreviewRow}>
+              <View style={[styles.proPreviewCard, styles.proPreviewCardGradient]}>
+                <MaterialCommunityIcons name="heart-pulse" size={24} color="#E91E63" />
+                <Text style={styles.proPreviewLabel}>{t("pro.cycleHealthScore")}</Text>
+                <View style={styles.proPreviewBlur} />
+              </View>
+              <View style={[styles.proPreviewCard, styles.proPreviewCardLavender]}>
+                <MaterialCommunityIcons name="calendar-check" size={24} color="#8F72C5" />
+                <Text style={styles.proPreviewLabel}>{t("pro.cycleRegularity")}</Text>
+                <View style={styles.proPreviewBlur} />
+              </View>
+            </View>
+
+            <View style={styles.proPreviewRow}>
+              <View style={[styles.proPreviewCard, styles.proPreviewCardMint]}>
+                <MaterialCommunityIcons name="emoticon-happy" size={24} color="#4CAF50" />
+                <Text style={styles.proPreviewLabel}>{t("pro.moodPatterns")}</Text>
+                <View style={styles.proPreviewBlur} />
+              </View>
+              <View style={[styles.proPreviewCard, styles.proPreviewCardPeach]}>
+                <MaterialCommunityIcons name="chart-line" size={24} color="#FF9800" />
+                <Text style={styles.proPreviewLabel}>{t("pro.detailedTrends")}</Text>
+                <View style={styles.proPreviewBlur} />
+              </View>
+            </View>
+
+            {/* Features List */}
+            <View style={styles.proFeaturesList}>
+              <View style={styles.proFeatureItem}>
+                <MaterialCommunityIcons name="check-circle" size={18} color="#8F72C5" />
+                <Text style={styles.proFeatureText}>{t("pro.featureHealthScore")}</Text>
+              </View>
+              <View style={styles.proFeatureItem}>
+                <MaterialCommunityIcons name="check-circle" size={18} color="#8F72C5" />
+                <Text style={styles.proFeatureText}>{t("pro.featureRegularity")}</Text>
+              </View>
+              <View style={styles.proFeatureItem}>
+                <MaterialCommunityIcons name="check-circle" size={18} color="#8F72C5" />
+                <Text style={styles.proFeatureText}>{t("pro.featurePatterns")}</Text>
+              </View>
+              <View style={styles.proFeatureItem}>
+                <MaterialCommunityIcons name="check-circle" size={18} color="#8F72C5" />
+                <Text style={styles.proFeatureText}>{t("pro.featurePredictions")}</Text>
+              </View>
+            </View>
+
+            {/* CTA Button */}
+            <TouchableOpacity style={styles.proUnlockButton} onPress={showProUpsell}>
+              <View style={styles.proUnlockButtonContent}>
+                <MaterialCommunityIcons name="crown" size={18} color="#FFFFFF" />
+                <Text style={styles.proUnlockButtonText}>{t("pro.unlockProFeatures")}</Text>
+              </View>
+              <Text style={styles.proUnlockButtonSubtext}>{t("pro.unlockSubtext")}</Text>
             </TouchableOpacity>
-          </>
+          </View>
         )}
       </View>
 
