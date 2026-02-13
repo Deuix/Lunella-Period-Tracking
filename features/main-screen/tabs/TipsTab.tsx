@@ -8,6 +8,12 @@ import type { BreathPhase, BreathStep, SymptomLogEntry } from "../types";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
 
+type TipVisual = {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  color: string;
+  bgColor: string;
+};
+
 type TipsTabProps = {
   activeBreathingStep: BreathStep | null;
   breathingGuideText: string;
@@ -28,6 +34,20 @@ type TipsTabProps = {
   selectedMoods: string[];
   symptomLogs: SymptomLogEntry[];
   t: TranslationFn;
+};
+
+const TIP_VISUALS: Record<string, TipVisual> = {
+  "girlTips.tip1Title": { icon: "tea", color: "#D4587A", bgColor: "#FCEEF4" },
+  "girlTips.tip2Title": { icon: "moon-waning-crescent", color: "#7B5EA8", bgColor: "#F0E8FA" },
+  "girlTips.tip3Title": { icon: "water", color: "#4A9D6E", bgColor: "#ECF8F1" },
+  "girlTips.tip4Title": { icon: "food-apple", color: "#E6A84D", bgColor: "#FFF3EA" },
+  "girlTips.tip5Title": { icon: "walk", color: "#8F72C5", bgColor: "#F0E8FA" },
+};
+
+const DEFAULT_TIP_VISUAL: TipVisual = {
+  icon: "lightbulb",
+  color: "#8F72C5",
+  bgColor: "#F0E8FA",
 };
 
 export function TipsTab({
@@ -55,26 +75,73 @@ export function TipsTab({
   const todayISO = startOfDay(new Date()).toISOString();
   const todayCheckIn = symptomLogs.find((log) => log.dateISO === todayISO);
   const hasTodayCheckIn = !!todayCheckIn;
+  const selectedMoodCount = selectedMoods.length;
+  const flowLabel = t(`flow.${selectedFlow}`);
+  const selectedMoodSet = new Set(selectedMoods);
+  const recommendedTip =
+    selectedMoodSet.has("moods.cramps") || selectedMoodSet.has("moods.headache")
+      ? GIRL_TIPS[0]
+      : selectedMoodSet.has("moods.tired") || selectedMoodSet.has("moods.low")
+        ? GIRL_TIPS[1]
+        : selectedMoodSet.has("moods.stressed")
+          ? GIRL_TIPS[4]
+          : selectedFlow === "heavy"
+            ? GIRL_TIPS[3]
+            : GIRL_TIPS[2];
+  const recommendedTipVisual = TIP_VISUALS[recommendedTip.titleKey] ?? DEFAULT_TIP_VISUAL;
 
   return (
     <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.sectionTitle}>{t("tips.sectionTitle")}</Text>
 
       {hasTodayCheckIn && (
-        <View style={styles.todayCheckInBanner}>
+        <TouchableOpacity style={styles.todayCheckInBanner} onPress={onOpenCheckInHistory}>
           <View style={styles.todayCheckInBannerHeader}>
-            <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-            <Text style={styles.todayCheckInBannerText}>{t("tips.alreadyCheckedIn")}</Text>
+            <View style={styles.todayCheckInBannerIcon}>
+              <Ionicons name="checkmark-circle" size={18} color="#8F72C5" />
+            </View>
+            <View style={styles.todayCheckInBannerCopy}>
+              <Text style={styles.todayCheckInBannerText}>{t("tips.alreadyCheckedIn")}</Text>
+              <Text style={styles.todayCheckInBannerSubtext}>{t("tips.viewOrEdit")}</Text>
+            </View>
           </View>
-          <TouchableOpacity onPress={onOpenCheckInHistory}>
-            <Text style={styles.todayCheckInBannerLink}>{t("tips.viewOrEdit")}</Text>
-          </TouchableOpacity>
-        </View>
+          <Ionicons name="chevron-forward" size={18} color="#8F72C5" />
+        </TouchableOpacity>
       )}
 
       <View style={styles.infoCard}>
+        <LinearGradient colors={["#F8F1FF", "#FFFFFF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.checkInHero}>
+          <View style={styles.checkInHeroHeader}>
+            <View style={styles.checkInHeroCopy}>
+              <Text style={styles.checkInHeroTitle}>{t("tips.howDoYouFeel", { name: feelingName })}</Text>
+              <Text style={styles.checkInHeroSubtitle}>{t("tips.pickMoods")}</Text>
+            </View>
+
+            <View style={styles.checkInMoodCounter}>
+              <Ionicons name="sparkles-outline" size={16} color="#8F72C5" />
+              <Text style={styles.checkInMoodCounterValue}>{selectedMoodCount}</Text>
+            </View>
+          </View>
+
+          <View style={styles.checkInSummaryRow}>
+            <View style={styles.checkInSummaryChip}>
+              <MaterialCommunityIcons name="water" size={15} color="#8F72C5" />
+              <Text style={styles.checkInSummaryText}>{flowLabel}</Text>
+            </View>
+            <View style={styles.checkInSummaryChip}>
+              <Ionicons name="happy-outline" size={15} color="#8F72C5" />
+              <Text style={styles.checkInSummaryText}>
+                {t("tips.moods")} {selectedMoodCount}
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
+
         <View style={styles.flowCard}>
-          <Text style={styles.flowCardTitle}>{t("tips.menstrualFlow")}</Text>
+          <View style={styles.checkInSectionHeader}>
+            <Text style={styles.flowCardTitle}>{t("tips.menstrualFlow")}</Text>
+            <Text style={styles.checkInSectionBadge}>{flowLabel}</Text>
+          </View>
 
           <View style={styles.flowTabRow}>
             {MENSTRUAL_FLOW_OPTIONS.map((flowOption) => {
@@ -104,36 +171,60 @@ export function TipsTab({
           </View>
         </View>
 
-        <Text style={styles.tipsQuestion}>{t("tips.howDoYouFeel", { name: feelingName })}</Text>
-        <Text style={styles.infoFootnote}>{t("tips.pickMoods")}</Text>
+        <View style={styles.checkInSection}>
+          <View style={styles.checkInSectionHeader}>
+            <Text style={styles.checkInSectionTitle}>{t("tips.moods")}</Text>
+            <Text style={styles.checkInSectionBadge}>
+              {selectedMoodCount}/{MOOD_OPTIONS.length}
+            </Text>
+          </View>
 
-        <View style={styles.moodGrid}>
-          {MOOD_OPTIONS.map((moodOption) => {
-            const isSelected = selectedMoods.includes(moodOption.labelKey);
-            return (
-              <Pressable
-                key={moodOption.labelKey}
-                style={[styles.moodChip, isSelected && styles.moodChipActive]}
-                onPress={() => onToggleMood(moodOption.labelKey)}>
-                <Text style={styles.moodEmoji}>{moodOption.emoji}</Text>
-                <Text style={[styles.moodLabel, isSelected && styles.moodLabelActive]}>
-                  {t(moodOption.labelKey)}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <View style={styles.moodGrid}>
+            {MOOD_OPTIONS.map((moodOption) => {
+              const isSelected = selectedMoods.includes(moodOption.labelKey);
+              return (
+                <Pressable
+                  key={moodOption.labelKey}
+                  style={[styles.moodChip, isSelected && styles.moodChipActive]}
+                  onPress={() => onToggleMood(moodOption.labelKey)}>
+                  {isSelected && <Ionicons name="checkmark-circle" size={16} color="#8F72C5" style={styles.moodChipCheck} />}
+                  <Text style={styles.moodEmoji}>{moodOption.emoji}</Text>
+                  <Text style={[styles.moodLabel, isSelected && styles.moodLabelActive]}>
+                    {t(moodOption.labelKey)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.recommendedTipCard}>
+          <View style={[styles.recommendedTipIcon, { backgroundColor: recommendedTipVisual.bgColor }]}>
+            <MaterialCommunityIcons name={recommendedTipVisual.icon} size={22} color={recommendedTipVisual.color} />
+          </View>
+          <View style={styles.recommendedTipCopy}>
+            <Text style={styles.recommendedTipLabel}>{t("tips.quickTips")}</Text>
+            <Text style={styles.recommendedTipTitle}>{t(recommendedTip.titleKey)}</Text>
+            <Text style={styles.recommendedTipText}>{t(recommendedTip.detailKey)}</Text>
+          </View>
         </View>
 
         <TouchableOpacity style={styles.saveCheckinButton} onPress={onSaveDailyCheckin}>
-          <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+          <View style={styles.saveCheckinButtonLeading}>
+            <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+          </View>
           <Text style={styles.saveCheckinButtonText}>{t("tips.saveToday")}</Text>
+          <Ionicons name="arrow-forward" size={17} color="#FFFFFF" />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.viewHistoryButton} onPress={onOpenCheckInHistory}>
-          <Ionicons name="calendar-outline" size={18} color="#8F72C5" />
+          <View style={styles.viewHistoryButtonLeading}>
+            <Ionicons name="calendar-outline" size={18} color="#8F72C5" />
+          </View>
           <Text style={styles.viewHistoryButtonText}>
             {t("tips.viewHistory")} {symptomLogs.length > 0 && `(${symptomLogs.length})`}
           </Text>
+          <Ionicons name="chevron-forward" size={16} color="#8F72C5" />
         </TouchableOpacity>
       </View>
 
@@ -147,24 +238,7 @@ export function TipsTab({
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tipsGridScroll}>
           {GIRL_TIPS.map((tip) => {
-            const tipIcons: {
-              [key: string]: {
-                icon: keyof typeof MaterialCommunityIcons.glyphMap;
-                color: string;
-                bgColor: string;
-              };
-            } = {
-              "girlTips.tip1Title": { icon: "tea", color: "#D4587A", bgColor: "#FCEEF4" },
-              "girlTips.tip2Title": { icon: "moon-waning-crescent", color: "#7B5EA8", bgColor: "#F0E8FA" },
-              "girlTips.tip3Title": { icon: "water", color: "#4A9D6E", bgColor: "#ECF8F1" },
-              "girlTips.tip4Title": { icon: "food-apple", color: "#E6A84D", bgColor: "#FFF3EA" },
-              "girlTips.tip5Title": { icon: "walk", color: "#8F72C5", bgColor: "#F0E8FA" },
-            };
-            const tipStyle = tipIcons[tip.titleKey] || {
-              icon: "lightbulb",
-              color: "#8F72C5",
-              bgColor: "#F0E8FA",
-            };
+            const tipStyle = TIP_VISUALS[tip.titleKey] ?? DEFAULT_TIP_VISUAL;
 
             return (
               <View key={tip.titleKey} style={styles.tipCardNew}>
