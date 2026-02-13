@@ -1,10 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import type { ReactNode } from "react";
 import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { WEEK_DAY_KEYS } from "../constants";
 import { styles } from "../styles";
-import type { DecoratedCalendarDay, MonthlyInsight } from "../types";
-import { isSameDay, startOfDay } from "../utils";
+import type { MonthlyInsight } from "../types";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -19,130 +16,42 @@ type InsightsTabProps = {
   averageSymptomScore: number;
   currentMonthInsight: MonthlyInsight | undefined;
   dateLocale: string;
-  decoratedInsightsDays: DecoratedCalendarDay[];
   hasProAccess: boolean;
-  insightsMonthLabel: string;
-  monthOptions: Date[];
   monthlyInsights: MonthlyInsight[];
-  onSelectCalendarDate: (date: Date) => void;
-  onSelectInsightsMonthIndex: (index: number) => void;
   proInsightsSummary: ProInsightsSummary;
-  renderPregnancyProbabilityCard: () => ReactNode;
-  selectedCalendarDate: Date;
-  selectedInsightsMonthIndex: number;
   showProUpsell: () => void;
   cycleLength: number;
   periodLength: number;
   t: TranslationFn;
 };
 
+function formatProCardHeaderLabel(label: string) {
+  const sanitizedLabel = label.trim();
+  const firstSpaceIndex = sanitizedLabel.indexOf(" ");
+  if (firstSpaceIndex === -1) {
+    return sanitizedLabel;
+  }
+
+  return `${sanitizedLabel.slice(0, firstSpaceIndex)}\n${sanitizedLabel.slice(firstSpaceIndex + 1)}`;
+}
+
 export function InsightsTab({
   averageSymptomScore,
   currentMonthInsight,
   cycleLength,
   dateLocale,
-  decoratedInsightsDays,
   hasProAccess,
-  insightsMonthLabel,
-  monthOptions,
   monthlyInsights,
-  onSelectCalendarDate,
-  onSelectInsightsMonthIndex,
   periodLength,
   proInsightsSummary,
-  renderPregnancyProbabilityCard,
-  selectedCalendarDate,
-  selectedInsightsMonthIndex,
   showProUpsell,
   t,
 }: InsightsTabProps) {
+  const topMoodLabel = formatProCardHeaderLabel(t("pro.insightsTopMood", { mood: "" }));
+  const topFlowLabel = formatProCardHeaderLabel(t("pro.insightsTopFlow", { flow: "" }));
+
   return (
     <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.sectionTitle}>{t("insights.cycleStatistics")}</Text>
-      <Text style={styles.infoFootnote}>{t("insights.trackPatterns")}</Text>
-
-      <View style={styles.calendarCard}>
-        <Text style={styles.calendarCardTitle}>{insightsMonthLabel}</Text>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthChipRow}>
-          {monthOptions.map((monthOption, index) => {
-            const isSelected = selectedInsightsMonthIndex === index;
-            return (
-              <TouchableOpacity
-                key={`insights-${monthOption.toISOString()}`}
-                style={[styles.monthChip, isSelected && styles.monthChipActive]}
-                onPress={() => onSelectInsightsMonthIndex(index)}>
-                <Text style={[styles.monthChipText, isSelected && styles.monthChipTextActive]}>
-                  {monthOption.toLocaleDateString(dateLocale, { month: "short", year: "2-digit" })}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        <View style={styles.weekHeader}>
-          {WEEK_DAY_KEYS.map((dayKey, index) => (
-            <Text key={`${dayKey}-insights-${index}`} style={styles.weekDayText}>
-              {t(dayKey)}
-            </Text>
-          ))}
-        </View>
-
-        <View style={styles.calendarGrid}>
-          {decoratedInsightsDays.map((day) => {
-            const isSelectedDate = isSameDay(day.date, selectedCalendarDate);
-            const dayCategoryStyle =
-              day.category === "period"
-                ? styles.dayPeriod
-                : day.category === "ovulation"
-                  ? styles.dayOvulation
-                  : day.category === "fertility"
-                    ? styles.dayFertility
-                    : null;
-
-            return (
-              <Pressable
-                key={`insight-day-${day.date.toISOString()}`}
-                onPress={() => onSelectCalendarDate(startOfDay(day.date))}
-                style={[
-                  styles.dayCell,
-                  !day.isCurrentMonth && styles.dayCellMuted,
-                  dayCategoryStyle,
-                  isSelectedDate && styles.selectedCalendarDayOutline,
-                  day.isToday && styles.todayOutline,
-                ]}>
-                <Text
-                  style={[
-                    styles.dayCellText,
-                    !day.isCurrentMonth && styles.dayCellTextMuted,
-                    dayCategoryStyle && styles.dayCellTextSelected,
-                  ]}>
-                  {day.dayNumber}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.legendRow}>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#D8C3F9" }]} />
-            <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#BFDDFE" }]} />
-            <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#CDEFD9" }]} />
-            <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
-          </View>
-        </View>
-
-        <Text style={styles.calendarHintText}>{t("home.calendarHint")}</Text>
-        {renderPregnancyProbabilityCard()}
-      </View>
-
       <Text style={styles.insightSectionTitle}>
         {currentMonthInsight?.monthLabel ?? t("insights.thisMonth")}{" "}
         {t("insights.cycleStatistics").toLowerCase()}
@@ -247,7 +156,7 @@ export function InsightsTab({
                 <View style={styles.proInsightIconSmall}>
                   <MaterialCommunityIcons name="emoticon-happy" size={16} color="#4CAF50" />
                 </View>
-                <Text style={styles.proInsightCardLabel}>{t("pro.insightsTopMood", { mood: "" })}</Text>
+                <Text style={styles.proInsightCardLabel}>{topMoodLabel}</Text>
               </View>
               <Text style={styles.proInsightCardValue}>
                 {proInsightsSummary.topMoodKey ? t(proInsightsSummary.topMoodKey) : t("pro.noData")}
@@ -263,7 +172,7 @@ export function InsightsTab({
                 <View style={styles.proInsightIconSmall}>
                   <MaterialCommunityIcons name="water" size={16} color="#FF9800" />
                 </View>
-                <Text style={styles.proInsightCardLabel}>{t("pro.insightsTopFlow", { flow: "" })}</Text>
+                <Text style={styles.proInsightCardLabel}>{topFlowLabel}</Text>
               </View>
               <Text style={styles.proInsightCardValue}>
                 {proInsightsSummary.topFlowKey ? t(`flow.${proInsightsSummary.topFlowKey}`) : t("pro.noData")}

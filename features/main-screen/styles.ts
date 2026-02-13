@@ -966,6 +966,8 @@ export const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.4,
+    flexShrink: 1,
+    lineHeight: 16,
   },
   proInsightCardValue: {
     color: "#1A1521",

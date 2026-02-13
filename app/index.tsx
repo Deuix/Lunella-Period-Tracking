@@ -116,7 +116,6 @@ export default function Index() {
     return Array.from({ length: 12 }, (_, index) => addMonths(base, index - 2));
   }, []);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(2);
-  const [selectedInsightsMonthIndex, setSelectedInsightsMonthIndex] = useState(2);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(startOfDay(new Date()));
 
   const cycleContext = useMemo(
@@ -494,24 +493,6 @@ export default function Index() {
     [activeMonth, dateLocale],
   );
 
-  const activeInsightsMonth = monthOptions[selectedInsightsMonthIndex] ?? monthOptions[2];
-  const insightsMonthLabel = useMemo(
-    () =>
-      activeInsightsMonth.toLocaleDateString(dateLocale, {
-        month: "long",
-        year: "numeric",
-      }),
-    [activeInsightsMonth, dateLocale],
-  );
-
-  const decoratedInsightsDays = useMemo<DecoratedCalendarDay[]>(() => {
-    return buildCalendarDays(activeInsightsMonth).map((day) => ({
-      ...day,
-      category: getDayCategory(day.date, lastPeriodDate, cycleLength, periodLength),
-      isToday: isSameDay(day.date, new Date()),
-    }));
-  }, [activeInsightsMonth, cycleLength, lastPeriodDate, periodLength]);
-
   const recentInsightMonths = useMemo(() => {
     const base = startOfMonth(new Date());
     return Array.from({ length: 6 }, (_, index) => addMonths(base, index - 5));
@@ -685,7 +666,6 @@ export default function Index() {
               setCheckInHistoryVisible(false);
               setSelectedHistoryEntryId(null);
               setSelectedMonthIndex(2);
-              setSelectedInsightsMonthIndex(2);
               setSelectedCalendarDate(today);
               setIsPro(false);
               setIsDebugProOverrideEnabled(false);
@@ -1378,18 +1358,10 @@ export default function Index() {
           currentMonthInsight={currentMonthInsight}
           cycleLength={cycleLength}
           dateLocale={dateLocale}
-          decoratedInsightsDays={decoratedInsightsDays}
           hasProAccess={hasProAccess}
-          insightsMonthLabel={insightsMonthLabel}
-          monthOptions={monthOptions}
           monthlyInsights={monthlyInsights}
-          onSelectCalendarDate={setSelectedCalendarDate}
-          onSelectInsightsMonthIndex={setSelectedInsightsMonthIndex}
           periodLength={periodLength}
           proInsightsSummary={proInsightsSummary}
-          renderPregnancyProbabilityCard={renderPregnancyProbabilityCard}
-          selectedCalendarDate={selectedCalendarDate}
-          selectedInsightsMonthIndex={selectedInsightsMonthIndex}
           showProUpsell={() => showProUpsell("insights")}
           t={t}
         />
