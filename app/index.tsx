@@ -33,13 +33,13 @@ import {
   getRevenueCatOfferings,
   hasLunellaProEntitlement,
   initializeRevenueCat,
+  isRevenueCatAlreadyPurchasedError,
   isRevenueCatUserCancelledError,
   presentRevenueCatCustomerCenter,
   presentRevenueCatPaywall,
   presentRevenueCatPaywallIfNeeded,
   purchaseRevenueCatPackage,
   restoreRevenueCatPurchases,
-  isRevenueCatAlreadyPurchasedError,
   syncRevenueCatPurchases,
   type RevenueCatPackagesMap,
   type RevenueCatPlanId,
@@ -49,7 +49,7 @@ type GoalOption = "cycle_tracking" | "trying_to_conceive" | "pregnancy_tracking"
 type HomeTab = "home" | "insights" | "ai" | "tips" | "profile";
 type DayCategory = "period" | "ovulation" | "fertility" | "normal";
 type BreathPhase = "ready" | "inhale" | "hold" | "exhale" | "done";
-type ProfileView = "main" | "settings";
+type ProfileView = "main" | "settings" | "edit_profile";
 
 type AiMessage = {
   id: string;
@@ -64,7 +64,42 @@ type SymptomLogEntry = {
   moods: string[];
 };
 
-type ProUpsellSource = "ai" | "insights" | "export" | "health_sync" | "passcode";
+type MentalProgramId = "calm_reset" | "luteal_balance" | "sleep_release";
+type MentalSessionFormat = "breathwork" | "grounding" | "journal";
+type MentalCyclePhase = "period" | "fertility" | "luteal" | "follicular";
+
+type MentalProgramSession = {
+  id: string;
+  titleKey: string;
+  durationMinutes: number;
+  format: MentalSessionFormat;
+  promptKey: string;
+  journalPromptKey: string;
+  steps: string[];
+};
+
+type MentalProgram = {
+  id: MentalProgramId;
+  titleKey: string;
+  subtitleKey: string;
+  descriptionKey: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  accentColor: string;
+  targetPhase: MentalCyclePhase | "any";
+  sessions: MentalProgramSession[];
+};
+
+type MentalHealthLogEntry = {
+  id: string;
+  dateISO: string;
+  programId: MentalProgramId;
+  sessionId: string;
+  moodBefore: number;
+  moodAfter: number;
+  journalNote: string;
+};
+
+type ProUpsellSource = "ai" | "insights" | "export" | "health_sync" | "passcode" | "mental_health";
 
 type PersistedAppState = {
   isOnboardingDone: boolean;
@@ -81,6 +116,7 @@ type PersistedAppState = {
   pinLockEnabled: boolean;
   aiMessages: AiMessage[];
   symptomLogs: SymptomLogEntry[];
+  mentalHealthLogs: MentalHealthLogEntry[];
   aiUsageDateISO: string;
   aiUsageCount: number;
   isPro: boolean;
@@ -229,6 +265,129 @@ const GIRL_TIPS: GirlTip[] = [
     titleKey: "girlTips.tip5Title",
     detailKey: "girlTips.tip5Detail",
   },
+];
+
+const MENTAL_HEALTH_PROGRAMS: MentalProgram[] = [
+  {
+    id: "calm_reset",
+    titleKey: "mentalHealth.programCalmTitle",
+    subtitleKey: "mentalHealth.programCalmSubtitle",
+    descriptionKey: "mentalHealth.programCalmDescription",
+    icon: "heart-pulse",
+    accentColor: "#8F72C5",
+    targetPhase: "fertility",
+    sessions: [
+      {
+        id: "calm-breath-1",
+        titleKey: "mentalHealth.sessionCalmBreathTitle",
+        durationMinutes: 4,
+        format: "breathwork",
+        promptKey: "mentalHealth.sessionCalmBreathPrompt",
+        journalPromptKey: "mentalHealth.journalPromptCalm",
+        steps: [
+          "mentalHealth.stepBoxBreathing1",
+          "mentalHealth.stepBoxBreathing2",
+          "mentalHealth.stepBoxBreathing3",
+        ],
+      },
+      {
+        id: "calm-ground-1",
+        titleKey: "mentalHealth.sessionGroundingTitle",
+        durationMinutes: 5,
+        format: "grounding",
+        promptKey: "mentalHealth.sessionGroundingPrompt",
+        journalPromptKey: "mentalHealth.journalPromptGrounding",
+        steps: [
+          "mentalHealth.stepGrounding1",
+          "mentalHealth.stepGrounding2",
+          "mentalHealth.stepGrounding3",
+        ],
+      },
+    ],
+  },
+  {
+    id: "luteal_balance",
+    titleKey: "mentalHealth.programLutealTitle",
+    subtitleKey: "mentalHealth.programLutealSubtitle",
+    descriptionKey: "mentalHealth.programLutealDescription",
+    icon: "brain",
+    accentColor: "#A887D9",
+    targetPhase: "luteal",
+    sessions: [
+      {
+        id: "luteal-journal-1",
+        titleKey: "mentalHealth.sessionReframeTitle",
+        durationMinutes: 6,
+        format: "journal",
+        promptKey: "mentalHealth.sessionReframePrompt",
+        journalPromptKey: "mentalHealth.journalPromptReframe",
+        steps: [
+          "mentalHealth.stepReframe1",
+          "mentalHealth.stepReframe2",
+          "mentalHealth.stepReframe3",
+        ],
+      },
+      {
+        id: "luteal-breath-1",
+        titleKey: "mentalHealth.sessionSlowBreathTitle",
+        durationMinutes: 4,
+        format: "breathwork",
+        promptKey: "mentalHealth.sessionSlowBreathPrompt",
+        journalPromptKey: "mentalHealth.journalPromptLuteal",
+        steps: [
+          "mentalHealth.stepSlowBreath1",
+          "mentalHealth.stepSlowBreath2",
+          "mentalHealth.stepSlowBreath3",
+        ],
+      },
+    ],
+  },
+  {
+    id: "sleep_release",
+    titleKey: "mentalHealth.programSleepTitle",
+    subtitleKey: "mentalHealth.programSleepSubtitle",
+    descriptionKey: "mentalHealth.programSleepDescription",
+    icon: "weather-night",
+    accentColor: "#6B6EA8",
+    targetPhase: "period",
+    sessions: [
+      {
+        id: "sleep-body-1",
+        titleKey: "mentalHealth.sessionBodyScanTitle",
+        durationMinutes: 7,
+        format: "grounding",
+        promptKey: "mentalHealth.sessionBodyScanPrompt",
+        journalPromptKey: "mentalHealth.journalPromptSleep",
+        steps: [
+          "mentalHealth.stepBodyScan1",
+          "mentalHealth.stepBodyScan2",
+          "mentalHealth.stepBodyScan3",
+        ],
+      },
+      {
+        id: "sleep-release-1",
+        titleKey: "mentalHealth.sessionReleaseTitle",
+        durationMinutes: 5,
+        format: "journal",
+        promptKey: "mentalHealth.sessionReleasePrompt",
+        journalPromptKey: "mentalHealth.journalPromptRelease",
+        steps: [
+          "mentalHealth.stepRelease1",
+          "mentalHealth.stepRelease2",
+          "mentalHealth.stepRelease3",
+        ],
+      },
+    ],
+  },
+];
+
+const MENTAL_HEALTH_ROUTINE_DAYS = 7;
+const MOOD_RATING_OPTIONS = [
+  { value: 1, emoji: "😔" },
+  { value: 2, emoji: "😟" },
+  { value: 3, emoji: "😐" },
+  { value: 4, emoji: "🙂" },
+  { value: 5, emoji: "😁" },
 ];
 
 const BREATHING_TOTAL_ROUNDS = 4;
@@ -410,6 +569,67 @@ function getCycleContext(
     isFertilityWindow,
     fertilityDaysLeft: isFertilityWindow ? diffInDays(fertilityEndDate, today) + 1 : 0,
   };
+}
+
+function getMentalCyclePhase(cycleContext: CycleContext): MentalCyclePhase {
+  if (cycleContext.isPeriodDay) {
+    return "period";
+  }
+
+  if (cycleContext.isFertilityWindow || cycleContext.daysUntilOvulation <= 1) {
+    return "fertility";
+  }
+
+  if (cycleContext.daysUntilNextPeriod <= 7) {
+    return "luteal";
+  }
+
+  return "follicular";
+}
+
+function getRecommendedMentalProgramId(phase: MentalCyclePhase): MentalProgramId {
+  if (phase === "period") {
+    return "sleep_release";
+  }
+
+  if (phase === "luteal") {
+    return "luteal_balance";
+  }
+
+  return "calm_reset";
+}
+
+function getMentalWellnessStreak(logs: MentalHealthLogEntry[]): number {
+  if (logs.length === 0) {
+    return 0;
+  }
+
+  const loggedDays = new Set(logs.map((entry) => entry.dateISO));
+  let streak = 0;
+  let cursorDate = startOfDay(new Date());
+
+  while (loggedDays.has(cursorDate.toISOString())) {
+    streak += 1;
+    cursorDate = addDays(cursorDate, -1);
+  }
+
+  return streak;
+}
+
+function getMentalWellnessAverageShift(logs: MentalHealthLogEntry[]): number | null {
+  if (logs.length === 0) {
+    return null;
+  }
+
+  const totalShift = logs.reduce((sum, entry) => sum + (entry.moodAfter - entry.moodBefore), 0);
+  return Number((totalShift / logs.length).toFixed(1));
+}
+
+function getProgramRoutineProgressDays(logs: MentalHealthLogEntry[], programId: MentalProgramId): number {
+  const uniqueDays = new Set(
+    logs.filter((entry) => entry.programId === programId).map((entry) => entry.dateISO),
+  );
+  return Math.min(MENTAL_HEALTH_ROUTINE_DAYS, uniqueDays.size);
 }
 
 function getCycleTimingForDate(targetDate: Date, lastPeriodStart: Date, cycleLength: number) {
@@ -630,6 +850,7 @@ export default function Index() {
   const [stepDirection, setStepDirection] = useState<1 | -1>(1);
   const [isOnboardingDone, setIsOnboardingDone] = useState(false);
   const [isPro, setIsPro] = useState(false);
+  const [isDebugProOverrideEnabled, setIsDebugProOverrideEnabled] = useState(false);
   const [isRevenueCatEnabled, setIsRevenueCatEnabled] = useState(false);
   const [isSubscriptionModalVisible, setIsSubscriptionModalVisible] = useState(false);
   const [isRevenueCatLoading, setIsRevenueCatLoading] = useState(false);
@@ -637,6 +858,7 @@ export default function Index() {
   const [revenueCatPackages, setRevenueCatPackages] = useState<RevenueCatPackagesMap>(EMPTY_REVENUECAT_PACKAGES);
 
   const [name, setName] = useState("");
+  const [draftProfileName, setDraftProfileName] = useState("");
   const [goals, setGoals] = useState<GoalOption[]>([]);
   const [lastPeriodDate, setLastPeriodDate] = useState(startOfDay(new Date()));
   const [cycleLength, setCycleLength] = useState(28);
@@ -656,6 +878,12 @@ export default function Index() {
   const [healthSyncEnabled, setHealthSyncEnabled] = useState(false);
   const [pinLockEnabled, setPinLockEnabled] = useState(false);
   const [symptomLogs, setSymptomLogs] = useState<SymptomLogEntry[]>([]);
+  const [mentalHealthLogs, setMentalHealthLogs] = useState<MentalHealthLogEntry[]>([]);
+  const [selectedMentalProgramId, setSelectedMentalProgramId] = useState<MentalProgramId>("calm_reset");
+  const [selectedMentalSessionId, setSelectedMentalSessionId] = useState<string>(MENTAL_HEALTH_PROGRAMS[0].sessions[0].id);
+  const [mentalMoodBefore, setMentalMoodBefore] = useState<number | null>(null);
+  const [mentalMoodAfter, setMentalMoodAfter] = useState<number | null>(null);
+  const [mentalJournalNote, setMentalJournalNote] = useState("");
   const [aiInput, setAiInput] = useState("");
   const [isAiTyping, setIsAiTyping] = useState(false);
   const [aiUsageDateISO, setAiUsageDateISO] = useState(todayISO);
@@ -663,6 +891,7 @@ export default function Index() {
   const [aiMessages, setAiMessages] = useState<AiMessage[]>(INITIAL_AI_MESSAGES);
   const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
   const [checkInHistoryVisible, setCheckInHistoryVisible] = useState(false);
+  const [selectedHistoryEntryId, setSelectedHistoryEntryId] = useState<string | null>(null);
 
   const monthOptions = useMemo(() => {
     const base = startOfMonth(new Date());
@@ -734,6 +963,9 @@ export default function Index() {
         }
         if (Array.isArray(storedState.symptomLogs)) {
           setSymptomLogs(storedState.symptomLogs);
+        }
+        if (Array.isArray(storedState.mentalHealthLogs)) {
+          setMentalHealthLogs(storedState.mentalHealthLogs);
         }
         if (typeof storedState.aiUsageDateISO === "string") {
           setAiUsageDateISO(storedState.aiUsageDateISO);
@@ -834,6 +1066,7 @@ export default function Index() {
       pinLockEnabled,
       aiMessages,
       symptomLogs,
+      mentalHealthLogs,
       aiUsageDateISO,
       aiUsageCount,
       isPro,
@@ -852,6 +1085,7 @@ export default function Index() {
     isOnboardingDone,
     isPro,
     lastPeriodDate,
+    mentalHealthLogs,
     name,
     periodLength,
     pinLockEnabled,
@@ -1151,6 +1385,143 @@ export default function Index() {
     });
   }, [symptomLogs]);
 
+  const sortedSymptomLogs = useMemo(() => {
+    return [...symptomLogs].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+  }, [symptomLogs]);
+
+  const mentalCyclePhase = useMemo(() => getMentalCyclePhase(cycleContext), [cycleContext]);
+  const recommendedMentalProgramId = useMemo(
+    () => getRecommendedMentalProgramId(mentalCyclePhase),
+    [mentalCyclePhase],
+  );
+  const selectedMentalProgram = useMemo(
+    () => MENTAL_HEALTH_PROGRAMS.find((program) => program.id === selectedMentalProgramId) ?? MENTAL_HEALTH_PROGRAMS[0],
+    [selectedMentalProgramId],
+  );
+  const selectedMentalSession = useMemo(() => {
+    return (
+      selectedMentalProgram.sessions.find((session) => session.id === selectedMentalSessionId) ??
+      selectedMentalProgram.sessions[0]
+    );
+  }, [selectedMentalProgram, selectedMentalSessionId]);
+  const mentalWellnessStreak = useMemo(() => getMentalWellnessStreak(mentalHealthLogs), [mentalHealthLogs]);
+  const mentalAverageMoodShift = useMemo(() => getMentalWellnessAverageShift(mentalHealthLogs), [mentalHealthLogs]);
+  const selectedProgramRoutineProgressDays = useMemo(
+    () => getProgramRoutineProgressDays(mentalHealthLogs, selectedMentalProgram.id),
+    [mentalHealthLogs, selectedMentalProgram.id],
+  );
+  const hasMentalSessionToday = useMemo(() => {
+    const todayDateISO = startOfDay(new Date()).toISOString();
+    return mentalHealthLogs.some((entry) => entry.dateISO === todayDateISO);
+  }, [mentalHealthLogs]);
+
+  const selectedHistoryEntry = useMemo(() => {
+    if (sortedSymptomLogs.length === 0) {
+      return null;
+    }
+
+    if (!selectedHistoryEntryId) {
+      return sortedSymptomLogs[0];
+    }
+
+    return sortedSymptomLogs.find((entry) => entry.id === selectedHistoryEntryId) ?? sortedSymptomLogs[0];
+  }, [selectedHistoryEntryId, sortedSymptomLogs]);
+
+  const selectedHistoryEntryDate = useMemo(() => {
+    if (!selectedHistoryEntry) {
+      return null;
+    }
+
+    return new Date(selectedHistoryEntry.dateISO);
+  }, [selectedHistoryEntry]);
+
+  const selectedHistoryFlowOption = useMemo(() => {
+    if (!selectedHistoryEntry) {
+      return null;
+    }
+
+    return MENSTRUAL_FLOW_OPTIONS.find((option) => option.key === selectedHistoryEntry.flowKey) ?? null;
+  }, [selectedHistoryEntry]);
+
+  const isSelectedHistoryEntryToday = useMemo(() => {
+    if (!selectedHistoryEntryDate) {
+      return false;
+    }
+
+    return isSameDay(selectedHistoryEntryDate, new Date());
+  }, [selectedHistoryEntryDate]);
+
+  const isSelectedHistoryEntryYesterday = useMemo(() => {
+    if (!selectedHistoryEntryDate) {
+      return false;
+    }
+
+    return diffInDays(startOfDay(new Date()), selectedHistoryEntryDate) === 1;
+  }, [selectedHistoryEntryDate]);
+
+  useEffect(() => {
+    if (!checkInHistoryVisible) {
+      return;
+    }
+
+    if (sortedSymptomLogs.length === 0) {
+      if (selectedHistoryEntryId !== null) {
+        setSelectedHistoryEntryId(null);
+      }
+      return;
+    }
+
+    if (!selectedHistoryEntryId || !sortedSymptomLogs.some((entry) => entry.id === selectedHistoryEntryId)) {
+      setSelectedHistoryEntryId(sortedSymptomLogs[0].id);
+    }
+  }, [checkInHistoryVisible, selectedHistoryEntryId, sortedSymptomLogs]);
+
+  useEffect(() => {
+    if (selectedMentalProgram.sessions.some((session) => session.id === selectedMentalSessionId)) {
+      return;
+    }
+
+    setSelectedMentalSessionId(selectedMentalProgram.sessions[0].id);
+  }, [selectedMentalProgram, selectedMentalSessionId]);
+
+  const openCheckInHistory = useCallback(() => {
+    setSelectedHistoryEntryId((currentId) => {
+      if (sortedSymptomLogs.length === 0) {
+        return null;
+      }
+
+      if (currentId && sortedSymptomLogs.some((entry) => entry.id === currentId)) {
+        return currentId;
+      }
+
+      return sortedSymptomLogs[0].id;
+    });
+    setCheckInHistoryVisible(true);
+  }, [sortedSymptomLogs]);
+
+  const openEditProfile = useCallback(() => {
+    setDraftProfileName(name.trim());
+    setProfileView("edit_profile");
+  }, [name]);
+
+  const closeEditProfile = useCallback(() => {
+    setDraftProfileName(name.trim());
+    setProfileView("main");
+  }, [name]);
+
+  const handleSaveProfileName = useCallback(() => {
+    const trimmedName = draftProfileName.trim();
+
+    if (!trimmedName) {
+      Alert.alert(t("profile.nameRequiredTitle"), t("profile.nameRequiredMessage"));
+      return;
+    }
+
+    setName(trimmedName);
+    setProfileView("main");
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [draftProfileName, t]);
+
   const proInsightsSummary = useMemo(() => {
     if (recentSymptomLogs.length === 0) {
       return {
@@ -1193,7 +1564,8 @@ export default function Index() {
   }, [recentSymptomLogs]);
 
   const freeAiRemaining = Math.max(0, FREE_AI_DAILY_LIMIT - aiUsageCount);
-  const isAiLockedForFree = !isPro && freeAiRemaining <= 0;
+  const hasProAccess = isPro || (__DEV__ && isDebugProOverrideEnabled);
+  const isAiLockedForFree = !hasProAccess && freeAiRemaining <= 0;
 
   const selectedDatePregnancyDetail = useMemo(
     () =>
@@ -1354,6 +1726,11 @@ export default function Index() {
   };
 
   const openSubscriptionModal = () => {
+    if (__DEV__ && isDebugProOverrideEnabled && !isPro) {
+      setIsSubscriptionModalVisible(true);
+      return;
+    }
+
     if (!isRevenueCatEnabled) {
       Alert.alert(t("pro.revenueCatUnavailableTitle"), t("pro.revenueCatUnavailableDescription"));
       return;
@@ -1547,7 +1924,9 @@ export default function Index() {
             ? t("pro.upsellSourceExport")
             : source === "health_sync"
               ? t("pro.upsellSourceHealth")
-              : t("pro.upsellSourcePasscode");
+              : source === "passcode"
+                ? t("pro.upsellSourcePasscode")
+                : t("pro.upsellSourceMentalHealth");
 
     Alert.alert(
       t("pro.upsellTitle", { source: sourceTitle }),
@@ -1565,6 +1944,81 @@ export default function Index() {
         },
       ],
     );
+  };
+
+  const handleSelectMentalProgram = (programId: MentalProgramId) => {
+    setSelectedMentalProgramId(programId);
+    const nextProgram = MENTAL_HEALTH_PROGRAMS.find((program) => program.id === programId);
+    if (nextProgram) {
+      setSelectedMentalSessionId(nextProgram.sessions[0].id);
+    }
+    setMentalMoodBefore(null);
+    setMentalMoodAfter(null);
+    setMentalJournalNote("");
+  };
+
+  const handleSelectMentalSession = (sessionId: string) => {
+    setSelectedMentalSessionId(sessionId);
+    setMentalMoodBefore(null);
+    setMentalMoodAfter(null);
+    setMentalJournalNote("");
+  };
+
+  const handleOpenMentalSafetySupport = () => {
+    Alert.alert(
+      t("mentalHealth.safetyTitle"),
+      t("mentalHealth.safetyMessage"),
+      [
+        { text: t("mentalHealth.safetyClose"), style: "cancel" },
+        {
+          text: t("mentalHealth.safetyBreathingAction"),
+          onPress: () => {
+            startBreathingSession();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSaveMentalSession = () => {
+    if (!hasProAccess) {
+      showProUpsell("mental_health");
+      return;
+    }
+
+    if (mentalMoodBefore === null || mentalMoodAfter === null) {
+      Alert.alert(t("mentalHealth.ratingRequiredTitle"), t("mentalHealth.ratingRequiredMessage"));
+      return;
+    }
+
+    const sessionDateISO = startOfDay(new Date()).toISOString();
+    const nextEntry: MentalHealthLogEntry = {
+      id: `mental-${Date.now()}`,
+      dateISO: sessionDateISO,
+      programId: selectedMentalProgram.id,
+      sessionId: selectedMentalSession.id,
+      moodBefore: mentalMoodBefore,
+      moodAfter: mentalMoodAfter,
+      journalNote: mentalJournalNote.trim(),
+    };
+
+    setMentalHealthLogs((currentLogs) => {
+      const filteredLogs = currentLogs.filter(
+        (entry) =>
+          !(
+            entry.dateISO === sessionDateISO &&
+            entry.programId === selectedMentalProgram.id &&
+            entry.sessionId === selectedMentalSession.id
+          ),
+      );
+      return [...filteredLogs, nextEntry].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    });
+
+    setMentalMoodBefore(null);
+    setMentalMoodAfter(null);
+    setMentalJournalNote("");
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(t("mentalHealth.savedTitle"), t("mentalHealth.savedMessage"));
   };
 
   const handleSaveDailyCheckin = () => {
@@ -1603,13 +2057,13 @@ export default function Index() {
       message,
       [
         { text: "OK", style: "cancel" },
-        { text: t("tips.viewHistory"), onPress: () => setCheckInHistoryVisible(true) }
+        { text: t("tips.viewHistory"), onPress: openCheckInHistory }
       ]
     );
   };
 
   const handleExportCycleData = async () => {
-    if (!isPro) {
+    if (!hasProAccess) {
       showProUpsell("export");
       return;
     }
@@ -1624,6 +2078,7 @@ export default function Index() {
         lastPeriodDate: lastPeriodDate.toISOString(),
       },
       symptomLogs,
+      mentalHealthLogs,
       aiMessages,
     };
 
@@ -1767,7 +2222,7 @@ export default function Index() {
       });
     }
 
-    if (!isPro && usedLiveAi) {
+    if (!hasProAccess && usedLiveAi) {
       setAiUsageCount((currentCount) => currentCount + 1);
     }
 
@@ -2044,7 +2499,7 @@ export default function Index() {
             <TouchableOpacity style={styles.profileAvatar} onPress={() => setActiveTab("profile")}>
               <Text style={styles.profileAvatarText}>{(name.trim()[0] ?? "U").toUpperCase()}</Text>
             </TouchableOpacity>
-            {isPro && (
+            {hasProAccess && (
               <View style={styles.homeProBadgeWrap}>
                 <View style={styles.homeProBadge}>
                   <Text style={styles.homeProBadgeText}>{t("pro.activeShort")}</Text>
@@ -2170,6 +2625,23 @@ export default function Index() {
     const todayISO = startOfDay(new Date()).toISOString();
     const todayCheckIn = symptomLogs.find((log) => log.dateISO === todayISO);
     const hasTodayCheckIn = !!todayCheckIn;
+    const currentPhaseLabelKey =
+      mentalCyclePhase === "period"
+        ? "mentalHealth.phasePeriod"
+        : mentalCyclePhase === "fertility"
+          ? "mentalHealth.phaseFertility"
+          : mentalCyclePhase === "luteal"
+            ? "mentalHealth.phaseLuteal"
+            : "mentalHealth.phaseFollicular";
+    const recommendedMentalProgram =
+      MENTAL_HEALTH_PROGRAMS.find((program) => program.id === recommendedMentalProgramId) ?? MENTAL_HEALTH_PROGRAMS[0];
+    const recommendedPreviewSession = recommendedMentalProgram.sessions[0];
+    const selectedSessionFormatLabel =
+      selectedMentalSession.format === "breathwork"
+        ? t("mentalHealth.formatBreathwork")
+        : selectedMentalSession.format === "grounding"
+          ? t("mentalHealth.formatGrounding")
+          : t("mentalHealth.formatJournal");
 
     return (
       <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
@@ -2181,7 +2653,7 @@ export default function Index() {
               <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
               <Text style={styles.todayCheckInBannerText}>{t("tips.alreadyCheckedIn")}</Text>
             </View>
-            <TouchableOpacity onPress={() => setCheckInHistoryVisible(true)}>
+            <TouchableOpacity onPress={openCheckInHistory}>
               <Text style={styles.todayCheckInBannerLink}>{t("tips.viewOrEdit")}</Text>
             </TouchableOpacity>
           </View>
@@ -2248,7 +2720,7 @@ export default function Index() {
 
           <TouchableOpacity
             style={styles.viewHistoryButton}
-            onPress={() => setCheckInHistoryVisible(true)}>
+            onPress={openCheckInHistory}>
             <Ionicons name="calendar-outline" size={18} color="#8F72C5" />
             <Text style={styles.viewHistoryButtonText}>
               {t("tips.viewHistory")} {symptomLogs.length > 0 && `(${symptomLogs.length})`}
@@ -2257,18 +2729,47 @@ export default function Index() {
         </View>
 
         <View style={styles.tipsSectionWrap}>
-          <Text style={styles.tipsSectionTitle}>{t("tips.helpfulTips")}</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tipsCarouselRow}>
-            {GIRL_TIPS.map((tip) => (
-              <View key={tip.titleKey} style={styles.tipCard}>
-                <Text style={styles.tipTitle}>{t(tip.titleKey)}</Text>
-                <Text style={styles.tipDetail}>{t(tip.detailKey)}</Text>
-              </View>
-            ))}
-          </ScrollView>
+          <View style={styles.tipsSectionHeader}>
+            <Text style={styles.tipsSectionTitle}>{t("tips.helpfulTips")}</Text>
+            <View style={styles.tipsSectionBadge}>
+              <MaterialCommunityIcons name="lightbulb-on" size={16} color="#F7B84B" />
+            </View>
+          </View>
+          
+          <View style={styles.tipsGrid}>
+            {GIRL_TIPS.map((tip, index) => {
+              const tipIcons: { [key: string]: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; bgColor: string } } = {
+                "girlTips.tip1Title": { icon: "tea", color: "#D4587A", bgColor: "#FCEEF4" },
+                "girlTips.tip2Title": { icon: "moon-waning-crescent", color: "#7B5EA8", bgColor: "#F0E8FA" },
+                "girlTips.tip3Title": { icon: "water", color: "#4A9D6E", bgColor: "#ECF8F1" },
+                "girlTips.tip4Title": { icon: "food-apple", color: "#E6A84D", bgColor: "#FFF3EA" },
+                "girlTips.tip5Title": { icon: "walk", color: "#8F72C5", bgColor: "#F0E8FA" },
+              };
+              const tipStyle = tipIcons[tip.titleKey] || { icon: "lightbulb", color: "#8F72C5", bgColor: "#F0E8FA" };
+              
+              return (
+                <Pressable
+                  key={tip.titleKey}
+                  style={[styles.tipCardNew, index % 2 === 0 && styles.tipCardLeft]}>
+                  <View style={[styles.tipIconCircle, { backgroundColor: tipStyle.bgColor }]}>
+                    <MaterialCommunityIcons name={tipStyle.icon} size={24} color={tipStyle.color} />
+                  </View>
+                  <View style={styles.tipContent}>
+                    <Text style={styles.tipTitleNew}>{t(tip.titleKey)}</Text>
+                    <Text style={styles.tipDetailNew}>{t(tip.detailKey)}</Text>
+                  </View>
+                  <View style={styles.tipArrow}>
+                    <Ionicons name="chevron-forward" size={16} color="#C5B8D8" />
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable style={styles.tipsMoreButton}>
+            <Text style={styles.tipsMoreButtonText}>{t("tips.seeAllTips")}</Text>
+            <Ionicons name="arrow-forward" size={16} color="#8F72C5" />
+          </Pressable>
         </View>
 
         <LinearGradient
@@ -2357,6 +2858,221 @@ export default function Index() {
             </Text>
             {!isBreathingRunning && <Ionicons name="play" size={18} color="#FFFFFF" style={{marginLeft: 8}} />}
           </TouchableOpacity>
+        </LinearGradient>
+
+        <LinearGradient
+          colors={["#F7F1FF", "#FFFFFF"]}
+          style={styles.mentalHealthContainer}>
+          <View style={styles.mentalHealthHeaderRow}>
+            <View style={styles.mentalHealthHeaderTextWrap}>
+              <Text style={styles.mentalHealthTitle}>{t("mentalHealth.title")}</Text>
+              <Text style={styles.mentalHealthSubtitle}>{t("mentalHealth.subtitle")}</Text>
+            </View>
+            <View style={[styles.mentalHealthPlanBadge, hasProAccess ? styles.mentalHealthPlanBadgePro : styles.mentalHealthPlanBadgeFree]}>
+              <Text style={styles.mentalHealthPlanBadgeText}>{hasProAccess ? t("pro.activeShort") : t("pro.freeShort")}</Text>
+            </View>
+          </View>
+
+          <View style={styles.mentalHealthSafetyRow}>
+            <Text style={styles.mentalHealthSafetyText}>{t("mentalHealth.safetyNote")}</Text>
+            <TouchableOpacity
+              style={styles.mentalHealthSafetyButton}
+              onPress={handleOpenMentalSafetySupport}>
+              <Text style={styles.mentalHealthSafetyButtonText}>{t("mentalHealth.safetyButton")}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.mentalHealthStatsRow}>
+            <View style={styles.mentalHealthStatCard}>
+              <Text style={styles.mentalHealthStatValue}>{mentalWellnessStreak}</Text>
+              <Text style={styles.mentalHealthStatLabel}>{t("mentalHealth.streakLabel")}</Text>
+            </View>
+            <View style={styles.mentalHealthStatCard}>
+              <Text style={styles.mentalHealthStatValue}>{mentalHealthLogs.length}</Text>
+              <Text style={styles.mentalHealthStatLabel}>{t("mentalHealth.sessionsLabel")}</Text>
+            </View>
+            <View style={styles.mentalHealthStatCard}>
+              <Text style={styles.mentalHealthStatValue}>
+                {mentalAverageMoodShift === null
+                  ? t("mentalHealth.noDataShort")
+                  : `${mentalAverageMoodShift > 0 ? "+" : ""}${mentalAverageMoodShift}`}
+              </Text>
+              <Text style={styles.mentalHealthStatLabel}>{t("mentalHealth.moodLiftLabel")}</Text>
+            </View>
+          </View>
+
+          <View style={styles.mentalHealthPhaseCard}>
+            <Text style={styles.mentalHealthPhaseText}>{t("mentalHealth.phaseNow", { phase: t(currentPhaseLabelKey) })}</Text>
+            <Text style={styles.mentalHealthRecommendedText}>
+              {t("mentalHealth.recommendedProgram", { program: t(recommendedMentalProgram.titleKey) })}
+            </Text>
+            {hasMentalSessionToday && (
+              <Text style={styles.mentalHealthLoggedTodayText}>{t("mentalHealth.loggedToday")}</Text>
+            )}
+          </View>
+
+          {!hasProAccess ? (
+            <View style={styles.mentalHealthLockedCard}>
+              <Text style={styles.mentalHealthLockedTitle}>{t("mentalHealth.previewTitle")}</Text>
+              <Text style={styles.mentalHealthLockedText}>{t(recommendedMentalProgram.descriptionKey)}</Text>
+
+              <View style={styles.mentalSessionDetailCard}>
+                <View style={styles.mentalSessionHeader}>
+                  <Text style={styles.mentalSessionTitle}>{t(recommendedPreviewSession.titleKey)}</Text>
+                  <Text style={styles.mentalSessionMetaText}>
+                    {t("mentalHealth.durationMinutes", { count: recommendedPreviewSession.durationMinutes })}
+                  </Text>
+                </View>
+                <Text style={styles.mentalSessionPromptText}>{t(recommendedPreviewSession.promptKey)}</Text>
+                {recommendedPreviewSession.steps.slice(0, 1).map((stepKey) => (
+                  <View key={stepKey} style={styles.mentalSessionStepRow}>
+                    <View style={styles.mentalSessionStepBullet} />
+                    <Text style={styles.mentalSessionStepText}>{t(stepKey)}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity
+                style={styles.mentalHealthUnlockButton}
+                onPress={() => showProUpsell("mental_health")}>
+                <Text style={styles.mentalHealthUnlockButtonText}>{t("mentalHealth.unlockButton")}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.mentalProgramChipRow}>
+                {MENTAL_HEALTH_PROGRAMS.map((program) => {
+                  const isSelectedProgram = selectedMentalProgram.id === program.id;
+                  const programProgress = getProgramRoutineProgressDays(mentalHealthLogs, program.id);
+                  return (
+                    <TouchableOpacity
+                      key={program.id}
+                      style={[styles.mentalProgramChip, isSelectedProgram && styles.mentalProgramChipActive]}
+                      onPress={() => handleSelectMentalProgram(program.id)}>
+                      <MaterialCommunityIcons
+                        name={program.icon}
+                        size={16}
+                        color={isSelectedProgram ? "#FFFFFF" : program.accentColor}
+                      />
+                      <Text style={[styles.mentalProgramChipText, isSelectedProgram && styles.mentalProgramChipTextActive]}>
+                        {t(program.titleKey)}
+                      </Text>
+                      <Text style={[styles.mentalProgramChipProgressText, isSelectedProgram && styles.mentalProgramChipTextActive]}>
+                        {t("mentalHealth.routineProgress", {
+                          current: programProgress,
+                          total: MENTAL_HEALTH_ROUTINE_DAYS,
+                        })}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.mentalProgramDetailCard}>
+                <Text style={styles.mentalProgramTitle}>{t(selectedMentalProgram.titleKey)}</Text>
+                <Text style={styles.mentalProgramSubtitle}>{t(selectedMentalProgram.subtitleKey)}</Text>
+                <Text style={styles.mentalProgramDescription}>{t(selectedMentalProgram.descriptionKey)}</Text>
+                <Text style={styles.mentalProgramRoutineText}>
+                  {t("mentalHealth.routineProgress", {
+                    current: selectedProgramRoutineProgressDays,
+                    total: MENTAL_HEALTH_ROUTINE_DAYS,
+                  })}
+                </Text>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.mentalSessionChipRow}>
+                {selectedMentalProgram.sessions.map((session) => {
+                  const isSelectedSession = selectedMentalSession.id === session.id;
+                  return (
+                    <TouchableOpacity
+                      key={session.id}
+                      style={[styles.mentalSessionChip, isSelectedSession && styles.mentalSessionChipActive]}
+                      onPress={() => handleSelectMentalSession(session.id)}>
+                      <Text style={[styles.mentalSessionChipText, isSelectedSession && styles.mentalSessionChipTextActive]}>
+                        {t(session.titleKey)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.mentalSessionDetailCard}>
+                <View style={styles.mentalSessionHeader}>
+                  <Text style={styles.mentalSessionTitle}>{t(selectedMentalSession.titleKey)}</Text>
+                  <Text style={styles.mentalSessionMetaText}>
+                    {selectedSessionFormatLabel} · {t("mentalHealth.durationMinutes", { count: selectedMentalSession.durationMinutes })}
+                  </Text>
+                </View>
+                <Text style={styles.mentalSessionPromptText}>{t(selectedMentalSession.promptKey)}</Text>
+                {selectedMentalSession.steps.map((stepKey) => (
+                  <View key={stepKey} style={styles.mentalSessionStepRow}>
+                    <View style={styles.mentalSessionStepBullet} />
+                    <Text style={styles.mentalSessionStepText}>{t(stepKey)}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <Text style={styles.mentalRatingLabel}>{t("mentalHealth.moodBeforeLabel")}</Text>
+              <View style={styles.mentalRatingRow}>
+                {MOOD_RATING_OPTIONS.map((option) => {
+                  const isSelectedOption = mentalMoodBefore === option.value;
+                  return (
+                    <Pressable
+                      key={`before-${option.value}`}
+                      style={[styles.mentalRatingChip, isSelectedOption && styles.mentalRatingChipActive]}
+                      onPress={() => setMentalMoodBefore(option.value)}>
+                      <Text style={styles.mentalRatingEmoji}>{option.emoji}</Text>
+                      <Text style={[styles.mentalRatingValue, isSelectedOption && styles.mentalRatingValueActive]}>{option.value}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.mentalRatingLabel}>{t("mentalHealth.moodAfterLabel")}</Text>
+              <View style={styles.mentalRatingRow}>
+                {MOOD_RATING_OPTIONS.map((option) => {
+                  const isSelectedOption = mentalMoodAfter === option.value;
+                  return (
+                    <Pressable
+                      key={`after-${option.value}`}
+                      style={[styles.mentalRatingChip, isSelectedOption && styles.mentalRatingChipActive]}
+                      onPress={() => setMentalMoodAfter(option.value)}>
+                      <Text style={styles.mentalRatingEmoji}>{option.emoji}</Text>
+                      <Text style={[styles.mentalRatingValue, isSelectedOption && styles.mentalRatingValueActive]}>{option.value}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.mentalRatingLabel}>{t("mentalHealth.journalLabel")}</Text>
+              <TextInput
+                style={styles.mentalJournalInput}
+                value={mentalJournalNote}
+                onChangeText={setMentalJournalNote}
+                placeholder={t(selectedMentalSession.journalPromptKey)}
+                placeholderTextColor="#9C8BA5"
+                multiline
+                maxLength={300}
+                textAlignVertical="top"
+              />
+
+              <TouchableOpacity
+                style={[
+                  styles.mentalSaveButton,
+                  (mentalMoodBefore === null || mentalMoodAfter === null) && styles.mentalSaveButtonDisabled,
+                ]}
+                onPress={handleSaveMentalSession}
+                disabled={mentalMoodBefore === null || mentalMoodAfter === null}>
+                <Text style={styles.mentalSaveButtonText}>{t("mentalHealth.saveSessionButton")}</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </LinearGradient>
       </ScrollView>
     );
@@ -2493,7 +3209,7 @@ export default function Index() {
             <MaterialCommunityIcons name="star-four-points" size={18} color="#8F72C5" />
           </View>
 
-          {isPro ? (
+          {hasProAccess ? (
             <>
               <Text style={styles.proInsightsText}>
                 {t("pro.insightsLogs", { count: proInsightsSummary.logsCount })}
@@ -2525,35 +3241,103 @@ export default function Index() {
         </View>
 
         <View style={styles.overviewCard}>
-          <Text style={styles.overviewTitle}>{t("insights.cycleOverview", { year: new Date().getFullYear() })}</Text>
-          <Text style={styles.infoFootnote}>{t("insights.overviewFootnote")}</Text>
+          <View style={styles.overviewHeader}>
+            <Text style={styles.overviewTitle}>{t("insights.cycleOverview", { year: new Date().getFullYear() })}</Text>
+            <View style={styles.overviewBadge}>
+              <MaterialCommunityIcons name="chart-line" size={16} color="#8F72C5" />
+            </View>
+          </View>
 
-          <View style={styles.insightsHistoryList}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cycleOverviewScroll}>
             {monthlyInsights
               .slice()
               .reverse()
-              .map((insight) => (
-                <View key={`history-${insight.monthDate.toISOString()}`} style={styles.historyRow}>
-                  <Text style={styles.historyMonthLabel}>
-                    {insight.monthDate.toLocaleDateString(dateLocale, { month: "short", year: "numeric" })}
-                  </Text>
-                  <Text style={styles.historyRowText}>P: {insight.periodDays}</Text>
-                  <Text style={styles.historyRowText}>O: {insight.ovulationDays}</Text>
-                  <Text style={styles.historyRowText}>F: {insight.fertilityDays}</Text>
-                </View>
-              ))}
-          </View>
+              .map((insight, index) => {
+                const isActive = index === 0;
+                const totalActiveDays = insight.periodDays + insight.fertilityDays;
+                const maxDays = Math.max(14, totalActiveDays);
+                const periodPercent = (insight.periodDays / maxDays) * 100;
+                const fertilityPercent = (insight.fertilityDays / maxDays) * 100;
+                
+                return (
+                  <Pressable
+                    key={`overview-${insight.monthDate.toISOString()}`}
+                    style={[styles.cycleMonthCard, isActive && styles.cycleMonthCardActive]}>
+                    <View style={styles.cycleMonthHeader}>
+                      <Text style={[styles.cycleMonthLabel, isActive && styles.cycleMonthLabelActive]}>
+                        {insight.monthDate.toLocaleDateString(dateLocale, { month: "short" })}
+                      </Text>
+                      <Text style={[styles.cycleMonthYear, isActive && styles.cycleMonthYearActive]}>
+                        {insight.monthDate.getFullYear()}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.cycleStatsRow}>
+                      <View style={styles.cycleStatItem}>
+                        <View style={[styles.cycleStatIcon, { backgroundColor: "#FCEEF4" }]}>
+                          <MaterialCommunityIcons name="water" size={14} color="#D4587A" />
+                        </View>
+                        <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
+                          {insight.periodDays}
+                        </Text>
+                        <Text style={styles.cycleStatLabel}>{t("insights.periodDays")}</Text>
+                      </View>
+                      
+                      <View style={styles.cycleStatItem}>
+                        <View style={[styles.cycleStatIcon, { backgroundColor: "#FDF1D9" }]}>
+                          <MaterialCommunityIcons name="egg" size={14} color="#E6A84D" />
+                        </View>
+                        <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
+                          {insight.ovulationDays}
+                        </Text>
+                        <Text style={styles.cycleStatLabel}>{t("insights.ovulationDays")}</Text>
+                      </View>
+                      
+                      <View style={styles.cycleStatItem}>
+                        <View style={[styles.cycleStatIcon, { backgroundColor: "#ECF8F1" }]}>
+                          <MaterialCommunityIcons name="leaf" size={14} color="#4A9D6E" />
+                        </View>
+                        <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
+                          {insight.fertilityDays}
+                        </Text>
+                        <Text style={styles.cycleStatLabel}>{t("insights.fertilityDays")}</Text>
+                      </View>
+                    </View>
 
-          <View style={styles.trendChartWrap}>
-            {cycleOverviewRows.map((row) => (
-              <View key={`trend-${row.label}`} style={styles.trendRow}>
-                <Text style={styles.trendMonthLabel}>{row.label}</Text>
-                <View style={styles.trendTrack}>
-                  <View style={[styles.trendFill, { width: `${row.value}%` }]} />
-                </View>
-                <Text style={styles.trendValueLabel}>{row.display}</Text>
-              </View>
-            ))}
+                    <View style={styles.cycleMiniChart}>
+                      <View style={styles.cycleMiniBarTrack}>
+                        <View style={[styles.cycleMiniBar, { width: `${periodPercent}%`, backgroundColor: "#D4587A" }]} />
+                        <View style={[styles.cycleMiniBar, { width: `${fertilityPercent}%`, backgroundColor: "#4A9D6E" }]} />
+                      </View>
+                      <Text style={styles.cycleMiniChartLabel}>{t("insights.activeDays", { count: totalActiveDays })}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+          </ScrollView>
+
+          <View style={styles.cycleSummaryRow}>
+            <View style={styles.cycleSummaryItem}>
+              <Text style={styles.cycleSummaryValue}>{monthlyInsights.length}</Text>
+              <Text style={styles.cycleSummaryLabel}>{t("insights.monthsTracked")}</Text>
+            </View>
+            <View style={styles.cycleSummaryDivider} />
+            <View style={styles.cycleSummaryItem}>
+              <Text style={styles.cycleSummaryValue}>
+                {Math.round(monthlyInsights.reduce((sum, i) => sum + i.periodDays, 0) / monthlyInsights.length)}
+              </Text>
+              <Text style={styles.cycleSummaryLabel}>{t("insights.avgPeriod")}</Text>
+            </View>
+            <View style={styles.cycleSummaryDivider} />
+            <View style={styles.cycleSummaryItem}>
+              <Text style={styles.cycleSummaryValue}>
+                {Math.round(monthlyInsights.reduce((sum, i) => sum + i.fertilityDays, 0) / monthlyInsights.length)}
+              </Text>
+              <Text style={styles.cycleSummaryLabel}>{t("insights.avgFertility")}</Text>
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -2579,11 +3363,11 @@ export default function Index() {
 
         <View style={styles.aiQuotaCard}>
           <Text style={styles.aiQuotaTitle}>
-            {isPro
+            {hasProAccess
               ? t("pro.activePlan")
               : t("pro.aiDailyRemaining", { count: freeAiRemaining, total: FREE_AI_DAILY_LIMIT })}
           </Text>
-          {!isPro && (
+          {!hasProAccess && (
             <TouchableOpacity onPress={() => showProUpsell("ai")}>
               <Text style={styles.aiQuotaUpgradeText}>{t("pro.unlockButton")}</Text>
             </TouchableOpacity>
@@ -2682,6 +3466,61 @@ export default function Index() {
       { id: "lifetime", label: t("pro.planLifetime") },
     ];
 
+    if (profileView === "edit_profile") {
+      const editNamePreview = draftProfileName.trim() || profileName;
+
+      return (
+        <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.settingsHeaderRow}>
+            <TouchableOpacity style={styles.settingsBackButton} onPress={closeEditProfile}>
+              <Ionicons name="chevron-back" size={20} color="#4B3E53" />
+            </TouchableOpacity>
+            <Text style={styles.settingsHeaderTitle}>{t("profile.editProfileTitle")}</Text>
+            <View style={styles.settingsHeaderSpacer} />
+          </View>
+
+          <View style={styles.settingsCard}>
+            <Text style={styles.settingsSectionTitle}>{t("profile.editProfileSectionTitle")}</Text>
+            <Text style={styles.settingsRowSubtitle}>{t("profile.editProfileHint")}</Text>
+
+            <View style={styles.editProfileAvatarWrap}>
+              <View style={styles.profileAvatarLarge}>
+                <Text style={styles.profileAvatarLargeText}>{editNamePreview[0].toUpperCase()}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.editProfileFieldLabel}>{t("profile.nameLabel")}</Text>
+            <TextInput
+              style={styles.editProfileInput}
+              value={draftProfileName}
+              onChangeText={setDraftProfileName}
+              placeholder={t("profile.namePlaceholder")}
+              placeholderTextColor="#9A8BA0"
+              maxLength={40}
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={handleSaveProfileName}
+            />
+
+            <View style={styles.editProfileActionsRow}>
+              <TouchableOpacity style={styles.editProfileCancelButton} onPress={closeEditProfile}>
+                <Text style={styles.editProfileCancelButtonText}>{t("languagePicker.cancel")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.editProfileSaveButton,
+                  !draftProfileName.trim() && styles.editProfileSaveButtonDisabled,
+                ]}
+                onPress={handleSaveProfileName}
+                disabled={!draftProfileName.trim()}>
+                <Text style={styles.editProfileSaveButtonText}>{t("profile.saveChanges")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      );
+    }
+
     if (profileView === "settings") {
       return (
         <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
@@ -2734,7 +3573,7 @@ export default function Index() {
               <Switch
                 value={pinLockEnabled}
                 onValueChange={(nextValue) => {
-                  if (!isPro && nextValue) {
+                  if (!hasProAccess && nextValue) {
                     showProUpsell("passcode");
                     return;
                   }
@@ -2757,7 +3596,7 @@ export default function Index() {
               <Switch
                 value={healthSyncEnabled}
                 onValueChange={(nextValue) => {
-                  if (!isPro && nextValue) {
+                  if (!hasProAccess && nextValue) {
                     showProUpsell("health_sync");
                     return;
                   }
@@ -2768,6 +3607,25 @@ export default function Index() {
               />
             </View>
           </View>
+
+          {__DEV__ && (
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsSectionTitle}>{t("settings.debugSection")}</Text>
+
+              <View style={styles.settingsSwitchRow}>
+                <View style={styles.settingsSwitchTextWrap}>
+                  <Text style={styles.settingsRowTitle}>{t("settings.debugProAccess")}</Text>
+                  <Text style={styles.settingsRowSubtitle}>{t("settings.debugProAccessDesc")}</Text>
+                </View>
+                <Switch
+                  value={isDebugProOverrideEnabled}
+                  onValueChange={setIsDebugProOverrideEnabled}
+                  trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.settingsCard}>
             <Text style={styles.settingsSectionTitle}>{t("settings.general")}</Text>
@@ -2785,7 +3643,7 @@ export default function Index() {
               onPress={openSubscriptionModal}>
               <Text style={styles.settingsRowTitle}>{t("pro.managePlan")}</Text>
               <View style={styles.settingsNavRight}>
-                <Text style={styles.settingsNavValue}>{isPro ? t("pro.activeShort") : t("pro.freeShort")}</Text>
+                <Text style={styles.settingsNavValue}>{hasProAccess ? t("pro.activeShort") : t("pro.freeShort")}</Text>
                 <Ionicons name="chevron-forward" size={16} color="#85788A" />
               </View>
             </TouchableOpacity>
@@ -2839,120 +3697,6 @@ export default function Index() {
           </Modal>
 
           <Modal
-            visible={checkInHistoryVisible}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setCheckInHistoryVisible(false)}>
-            <Pressable style={styles.historyModalOverlay} onPress={() => setCheckInHistoryVisible(false)}>
-              <Pressable style={styles.historyModalContent} onPress={() => null}>
-                <View style={styles.historyModalHeader}>
-                  <Text style={styles.historyModalTitle}>{t("tips.checkInHistory")}</Text>
-                  <TouchableOpacity onPress={() => setCheckInHistoryVisible(false)}>
-                    <Ionicons name="close-circle" size={28} color="#8F72C5" />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false}>
-                  {symptomLogs.length === 0 ? (
-                    <View style={styles.emptyHistoryContainer}>
-                      <MaterialCommunityIcons name="calendar-blank" size={64} color="#D1C4E9" />
-                      <Text style={styles.emptyHistoryText}>{t("tips.noCheckInsYet")}</Text>
-                      <Text style={styles.emptyHistorySubtext}>{t("tips.startTrackingToday")}</Text>
-                    </View>
-                  ) : (
-                    [...symptomLogs]
-                      .sort((a, b) => b.dateISO.localeCompare(a.dateISO))
-                      .map((entry) => {
-                        const entryDate = new Date(entry.dateISO);
-                        const flowOption = MENSTRUAL_FLOW_OPTIONS.find((opt) => opt.key === entry.flowKey);
-                        const todayEntry = isSameDay(entryDate, new Date());
-
-                        return (
-                          <View key={entry.id} style={styles.historyCard}>
-                            <View style={styles.historyCardHeader}>
-                              <View style={styles.historyDateContainer}>
-                                <Text style={styles.historyDateText}>
-                                  {entryDate.toLocaleDateString(dateLocale, {
-                                    weekday: "short",
-                                    month: "short",
-                                    day: "numeric",
-                                  })}
-                                </Text>
-                                {todayEntry && (
-                                  <View style={styles.todayBadge}>
-                                    <Text style={styles.todayBadgeText}>{t("home.today")}</Text>
-                                  </View>
-                                )}
-                              </View>
-                              <TouchableOpacity
-                                onPress={() => {
-                                  Alert.alert(
-                                    t("tips.deleteCheckIn"),
-                                    t("tips.deleteCheckInConfirm"),
-                                    [
-                                      { text: t("languagePicker.cancel"), style: "cancel" },
-                                      {
-                                        text: t("tips.delete"),
-                                        style: "destructive",
-                                        onPress: () => {
-                                          setSymptomLogs((logs) => logs.filter((log) => log.id !== entry.id));
-                                          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                        },
-                                      },
-                                    ]
-                                  );
-                                }}>
-                                <Ionicons name="trash-outline" size={20} color="#E57373" />
-                              </TouchableOpacity>
-                            </View>
-
-                            <View style={styles.historyFlowRow}>
-                              <Text style={styles.historyLabel}>{t("tips.menstrualFlow")}:</Text>
-                              <View style={styles.historyFlowContainer}>
-                                {Array.from({ length: flowOption?.drops || 1 }).map((_, index) => (
-                                  <MaterialCommunityIcons
-                                    key={index}
-                                    name="water"
-                                    size={14}
-                                    color="#8F72C5"
-                                  />
-                                ))}
-                                <Text style={styles.historyFlowText}>{flowOption ? t(flowOption.labelKey) : ""}</Text>
-                              </View>
-                            </View>
-
-                            {entry.moods.length > 0 && (
-                              <View style={styles.historyMoodsContainer}>
-                                <Text style={styles.historyLabel}>{t("tips.moods")}:</Text>
-                                <View style={styles.historyMoodsGrid}>
-                                  {entry.moods.map((moodKey) => {
-                                    const moodOption = MOOD_OPTIONS.find((opt) => opt.labelKey === moodKey);
-                                    return moodOption ? (
-                                      <View key={moodKey} style={styles.historyMoodChip}>
-                                        <Text style={styles.historyMoodEmoji}>{moodOption.emoji}</Text>
-                                        <Text style={styles.historyMoodLabel}>{t(moodOption.labelKey)}</Text>
-                                      </View>
-                                    ) : null;
-                                  })}
-                                </View>
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })
-                  )}
-                </ScrollView>
-
-                <TouchableOpacity
-                  style={styles.historyCloseButton}
-                  onPress={() => setCheckInHistoryVisible(false)}>
-                  <Text style={styles.historyCloseButtonText}>{t("pro.close")}</Text>
-                </TouchableOpacity>
-              </Pressable>
-            </Pressable>
-          </Modal>
-
-          <Modal
             visible={isSubscriptionModalVisible}
             transparent
             animationType="fade"
@@ -2960,7 +3704,7 @@ export default function Index() {
             <Pressable style={styles.subscriptionModalOverlay} onPress={() => setIsSubscriptionModalVisible(false)}>
               <Pressable style={styles.subscriptionModalCard} onPress={() => null}>
                 <Text style={styles.subscriptionModalTitle}>{t("pro.managePlan")}</Text>
-                <Text style={styles.subscriptionModalSubtitle}>{isPro ? t("pro.activePlan") : t("pro.freePlan")}</Text>
+                <Text style={styles.subscriptionModalSubtitle}>{hasProAccess ? t("pro.activePlan") : t("pro.freePlan")}</Text>
 
                 {subscriptionPlans.map((plan) => {
                   const revenueCatPackage = revenueCatPackages[plan.id];
@@ -3033,11 +3777,11 @@ export default function Index() {
             <View>
               <Text style={styles.profileName}>{profileName}</Text>
               <Text style={styles.profileMetaText}>{profileGoals}</Text>
-              <Text style={styles.profilePlanText}>{isPro ? t("pro.activePlan") : t("pro.freePlan")}</Text>
+              <Text style={styles.profilePlanText}>{hasProAccess ? t("pro.activePlan") : t("pro.freePlan")}</Text>
             </View>
           </View>
 
-          <TouchableOpacity style={styles.profileSettingsIconButton} onPress={() => setProfileView("settings")}>
+          <TouchableOpacity style={styles.profileSettingsIconButton} onPress={openEditProfile}>
             <Ionicons name="settings-outline" size={22} color="#5D4F64" />
           </TouchableOpacity>
         </View>
@@ -3231,6 +3975,221 @@ export default function Index() {
             <TouchableOpacity style={styles.proSuccessButton} onPress={() => setIsProSuccessVisible(false)}>
               <Text style={styles.proSuccessButtonText}>{t("pro.close")}</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={checkInHistoryVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCheckInHistoryVisible(false)}>
+        <Pressable style={styles.historyModalOverlay} onPress={() => setCheckInHistoryVisible(false)}>
+          <Pressable style={styles.historyModalContent} onPress={() => null}>
+            <LinearGradient
+              colors={["#F8F4FF", "#FFFFFF"]}
+              style={styles.historyModalGradient}>
+              <View style={styles.historyModalHeader}>
+                <View style={styles.historyModalHeaderLeft}>
+                  <View style={styles.historyModalIconContainer}>
+                    <MaterialCommunityIcons name="calendar-clock" size={22} color="#8F72C5" />
+                  </View>
+                  <View>
+                    <Text style={styles.historyModalTitle}>{t("tips.checkInHistory")}</Text>
+                    <Text style={styles.historyModalSubtitle}>
+                      {symptomLogs.length > 0
+                        ? t("history.totalEntries", { count: symptomLogs.length })
+                        : t("history.noEntriesYet")}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.historyModalCloseButton}
+                  onPress={() => setCheckInHistoryVisible(false)}>
+                  <Ionicons name="close" size={24} color="#6E6074" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.historyList}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={symptomLogs.length === 0 ? styles.historyListEmptyCenter : styles.historyListContent}>
+                {symptomLogs.length === 0 ? (
+                  <View style={styles.emptyHistoryContainer}>
+                    <LinearGradient
+                      colors={["#F0E8FA", "#E9DFFF"]}
+                      style={styles.emptyHistoryIconContainer}>
+                      <MaterialCommunityIcons name="calendar-blank-outline" size={72} color="#8F72C5" />
+                    </LinearGradient>
+                    <Text style={styles.emptyHistoryTitle}>{t("history.emptyTitle")}</Text>
+                    <Text style={styles.emptyHistoryText}>{t("history.emptyMessage")}</Text>
+                    <TouchableOpacity
+                      style={styles.emptyHistoryButton}
+                      onPress={() => {
+                        setCheckInHistoryVisible(false);
+                      }}>
+                      <Ionicons name="add-circle" size={18} color="#FFFFFF" />
+                      <Text style={styles.emptyHistoryButtonText}>{t("history.startTracking")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.historyEntryListContainer}>
+                      {sortedSymptomLogs.map((entry) => {
+                        const entryDate = new Date(entry.dateISO);
+                        const flowOption = MENSTRUAL_FLOW_OPTIONS.find((opt) => opt.key === entry.flowKey);
+                        const isSelected = selectedHistoryEntry?.id === entry.id;
+                        const todayEntry = isSameDay(entryDate, new Date());
+                        const moodEmojis = entry.moods
+                          .map((moodKey) => MOOD_OPTIONS.find((opt) => opt.labelKey === moodKey)?.emoji)
+                          .filter((emoji): emoji is string => Boolean(emoji));
+                        const visibleMoodEmojis = moodEmojis.slice(0, 3);
+                        const hiddenMoodCount = moodEmojis.length - visibleMoodEmojis.length;
+
+                        return (
+                          <Pressable
+                            key={entry.id}
+                            style={[styles.historyEntryItem, isSelected && styles.historyEntryItemActive]}
+                            onPress={() => setSelectedHistoryEntryId(entry.id)}>
+                            <View style={styles.historyEntryTopRow}>
+                              <Text style={[styles.historyEntryDateText, isSelected && styles.historyEntryDateTextActive]}>
+                                {entryDate.toLocaleDateString(dateLocale, {
+                                  weekday: "short",
+                                  day: "numeric",
+                                  month: "short",
+                                })}
+                              </Text>
+                              {todayEntry && (
+                                <View style={styles.historyEntryTodayBadge}>
+                                  <Text style={styles.historyEntryTodayBadgeText}>{t("home.today")}</Text>
+                                </View>
+                              )}
+                            </View>
+
+                            <View style={styles.historyEntryMetaRow}>
+                              <Text style={styles.historyEntryFlowText}>{flowOption ? t(flowOption.labelKey) : ""}</Text>
+                              {visibleMoodEmojis.length > 0 && (
+                                <Text style={styles.historyEntryMoodText}>
+                                  {visibleMoodEmojis.join(" ")}
+                                  {hiddenMoodCount > 0 ? ` +${hiddenMoodCount}` : ""}
+                                </Text>
+                              )}
+                              {isSelected && <Ionicons name="chevron-forward" size={16} color="#8F72C5" />}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
+                    {selectedHistoryEntry && (
+                      <View style={styles.historyDetailsWrap}>
+                        <Text style={styles.historyDetailsTitle}>{t("tips.viewOrEdit")}</Text>
+
+                        <View style={styles.historyCard}>
+                          <View style={styles.historyCardHeader}>
+                            <View style={styles.historyDateContainer}>
+                              <LinearGradient
+                                colors={
+                                  isSelectedHistoryEntryToday
+                                    ? ["#8F72C5", "#A788D9"]
+                                    : isSelectedHistoryEntryYesterday
+                                      ? ["#B8A8E0", "#D4C2F0"]
+                                      : ["#E9DFFF", "#F5E6FF"]
+                                }
+                                style={[
+                                  styles.historyDateBadge,
+                                  isSelectedHistoryEntryToday && styles.historyDateBadgeToday,
+                                ]}>
+                                <Text style={styles.historyDateDay}>
+                                  {selectedHistoryEntryDate?.toLocaleDateString(dateLocale, { day: "numeric" })}
+                                </Text>
+                                <Text style={styles.historyDateMonth}>
+                                  {selectedHistoryEntryDate?.toLocaleDateString(dateLocale, { month: "short" })}
+                                </Text>
+                              </LinearGradient>
+                              {isSelectedHistoryEntryToday && (
+                                <View style={styles.todayBadge}>
+                                  <Text style={styles.todayBadgeText}>{t("home.today")}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <TouchableOpacity
+                              style={styles.historyDeleteButton}
+                              onPress={() => {
+                                Alert.alert(
+                                  t("tips.deleteCheckIn"),
+                                  t("tips.deleteCheckInConfirm"),
+                                  [
+                                    { text: t("languagePicker.cancel"), style: "cancel" },
+                                    {
+                                      text: t("tips.delete"),
+                                      style: "destructive",
+                                      onPress: () => {
+                                        setSymptomLogs((logs) => logs.filter((log) => log.id !== selectedHistoryEntry.id));
+                                        setSelectedHistoryEntryId((currentId) =>
+                                          currentId === selectedHistoryEntry.id ? null : currentId,
+                                        );
+                                        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                      },
+                                    },
+                                  ],
+                                );
+                              }}>
+                              <Ionicons name="trash-outline" size={18} color="#E57373" />
+                            </TouchableOpacity>
+                          </View>
+
+                          <View style={styles.historyCardBody}>
+                            <View style={styles.historyFlowRow}>
+                              <View style={styles.historyFlowIconContainer}>
+                                <MaterialCommunityIcons name="water" size={16} color="#8F72C5" />
+                                <Text style={styles.historyFlowLabel}>{t("tips.menstrualFlow")}</Text>
+                              </View>
+                              <View style={styles.historyFlowValueContainer}>
+                                {Array.from({ length: selectedHistoryFlowOption?.drops || 1 }).map((_, dropIndex) => (
+                                  <View key={dropIndex} style={styles.historyFlowDrop}>
+                                    <MaterialCommunityIcons name="water" size={12} color="#8F72C5" />
+                                  </View>
+                                ))}
+                                <Text style={styles.historyFlowText}>
+                                  {selectedHistoryFlowOption ? t(selectedHistoryFlowOption.labelKey) : ""}
+                                </Text>
+                              </View>
+                            </View>
+
+                            {selectedHistoryEntry.moods.length > 0 && (
+                              <View style={styles.historyMoodsContainer}>
+                                <View style={styles.historyMoodsHeader}>
+                                  <MaterialCommunityIcons name="emoticon-happy-outline" size={16} color="#8F72C5" />
+                                  <Text style={styles.historyMoodsLabel}>{t("tips.moods")}</Text>
+                                </View>
+                                <View style={styles.historyMoodsGrid}>
+                                  {selectedHistoryEntry.moods.map((moodKey) => {
+                                    const moodOption = MOOD_OPTIONS.find((opt) => opt.labelKey === moodKey);
+                                    return moodOption ? (
+                                      <View key={moodKey} style={styles.historyMoodChip}>
+                                        <Text style={styles.historyMoodEmoji}>{moodOption.emoji}</Text>
+                                        <Text style={styles.historyMoodLabel}>{t(moodOption.labelKey)}</Text>
+                                      </View>
+                                    ) : null;
+                                  })}
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    )}
+                  </>
+                )}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.historyCloseButton}
+                onPress={() => setCheckInHistoryVisible(false)}>
+                <Text style={styles.historyCloseButtonText}>{t("pro.close")}</Text>
+              </TouchableOpacity>
+            </LinearGradient>
           </Pressable>
         </Pressable>
       </Modal>
@@ -3938,74 +4897,143 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   overviewCard: {
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: "#E7DCE6",
     backgroundColor: "#FFFFFFEE",
     padding: 16,
-    gap: 12,
+    gap: 16,
+  },
+  overviewHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   overviewTitle: {
     color: "#2F2436",
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "800",
   },
-  insightsHistoryList: {
-    gap: 8,
-  },
-  historyRow: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#EEE4EF",
-    backgroundColor: "#FDF8FD",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: "row",
+  overviewBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F0E8FA",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
-  historyMonthLabel: {
-    color: "#3D3243",
-    fontSize: 13,
+  cycleOverviewScroll: {
+    paddingHorizontal: 4,
+    gap: 12,
+  },
+  cycleMonthCard: {
+    width: 180,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E7DCE6",
+    backgroundColor: "#FFFFFF",
+    padding: 14,
+    gap: 12,
+  },
+  cycleMonthCardActive: {
+    borderColor: "#8F72C5",
+    backgroundColor: "#F7F2FF",
+  },
+  cycleMonthHeader: {
+    alignItems: "center",
+    gap: 2,
+  },
+  cycleMonthLabel: {
+    color: "#6B5F70",
+    fontSize: 15,
     fontWeight: "700",
   },
-  historyRowText: {
-    color: "#6B5F70",
+  cycleMonthLabelActive: {
+    color: "#8F72C5",
+  },
+  cycleMonthYear: {
+    color: "#9A8B9C",
     fontSize: 12,
     fontWeight: "600",
   },
-  trendChartWrap: {
-    gap: 8,
-    marginTop: 2,
+  cycleMonthYearActive: {
+    color: "#8F72C5",
   },
-  trendRow: {
+  cycleStatsRow: {
     flexDirection: "row",
-    alignItems: "center",
+    justifyContent: "space-around",
     gap: 8,
   },
-  trendMonthLabel: {
-    width: 34,
-    color: "#6E6074",
-    fontSize: 12,
-    fontWeight: "700",
+  cycleStatItem: {
+    alignItems: "center",
+    gap: 4,
   },
-  trendTrack: {
-    flex: 1,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#EFE5F0",
+  cycleStatIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  trendFill: {
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#E69BBB",
+  cycleStatValue: {
+    color: "#4A4050",
+    fontSize: 18,
+    fontWeight: "800",
   },
-  trendValueLabel: {
-    width: 84,
+  cycleStatValueActive: {
+    color: "#8F72C5",
+  },
+  cycleStatLabel: {
+    color: "#8A7C8D",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  cycleMiniChart: {
+    gap: 6,
+  },
+  cycleMiniBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#F0E8F2",
+    flexDirection: "row",
+    overflow: "hidden",
+  },
+  cycleMiniBar: {
+    height: 8,
+  },
+  cycleMiniChartLabel: {
     color: "#7A6D7F",
     fontSize: 11,
-    textAlign: "right",
     fontWeight: "600",
+    textAlign: "center",
+  },
+  cycleSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    backgroundColor: "#F7F2FF",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  cycleSummaryItem: {
+    alignItems: "center",
+    gap: 4,
+  },
+  cycleSummaryValue: {
+    color: "#8F72C5",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  cycleSummaryLabel: {
+    color: "#7A6D7F",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  cycleSummaryDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#E7DCE6",
   },
   proInsightsCard: {
     borderRadius: 20,
@@ -4276,6 +5304,62 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
+  editProfileAvatarWrap: {
+    paddingTop: 6,
+    alignItems: "center",
+  },
+  editProfileFieldLabel: {
+    color: "#4C3D54",
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 6,
+  },
+  editProfileInput: {
+    borderWidth: 1,
+    borderColor: "#DED0DD",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#332A37",
+    backgroundColor: "#FFFFFF",
+  },
+  editProfileActionsRow: {
+    marginTop: 4,
+    flexDirection: "row",
+    gap: 10,
+  },
+  editProfileCancelButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#D8CADE",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  editProfileCancelButtonText: {
+    color: "#6C5F73",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  editProfileSaveButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#8F72C5",
+  },
+  editProfileSaveButtonDisabled: {
+    backgroundColor: "#C5B3DE",
+  },
+  editProfileSaveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   profileHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -4541,15 +5625,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "flex-end",
+    paddingHorizontal: 12,
+    paddingBottom: 10,
   },
   historyModalContent: {
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    borderRadius: 24,
     maxHeight: "85%",
+    minHeight: "55%",
+    overflow: "hidden",
   },
   historyModalHeader: {
     flexDirection: "row",
@@ -4564,6 +5648,76 @@ const styles = StyleSheet.create({
   },
   historyList: {
     flex: 1,
+    minHeight: 140,
+  },
+  historyListContent: {
+    gap: 14,
+    paddingBottom: 8,
+    flexGrow: 1,
+  },
+  historyEntryListContainer: {
+    gap: 10,
+  },
+  historyEntryItem: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E6DDEE",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  historyEntryItemActive: {
+    borderColor: "#8F72C5",
+    backgroundColor: "#F7F2FF",
+  },
+  historyEntryTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  historyEntryDateText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#4D4157",
+  },
+  historyEntryDateTextActive: {
+    color: "#5D4193",
+  },
+  historyEntryTodayBadge: {
+    backgroundColor: "#E9DFFF",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  historyEntryTodayBadgeText: {
+    color: "#6A4CA5",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  historyEntryMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  historyEntryFlowText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#715D86",
+  },
+  historyEntryMoodText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#6C5E74",
+  },
+  historyDetailsWrap: {
+    marginTop: 6,
+    gap: 10,
+  },
+  historyDetailsTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#4D4157",
   },
   emptyHistoryContainer: {
     alignItems: "center",
@@ -4575,12 +5729,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#5E5265",
     marginTop: 16,
-  },
-  emptyHistorySubtext: {
-    fontSize: 14,
-    color: "#85788A",
-    marginTop: 8,
-    textAlign: "center",
   },
   historyCard: {
     backgroundColor: "#FEFBFF",
@@ -4601,11 +5749,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  historyDateText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#2F2436",
-  },
   todayBadge: {
     backgroundColor: "#8F72C5",
     paddingHorizontal: 8,
@@ -4621,17 +5764,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
-  },
-  historyLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#5E5265",
-    marginRight: 8,
-  },
-  historyFlowContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+    justifyContent: "space-between",
   },
   historyFlowText: {
     fontSize: 13,
@@ -4676,6 +5809,151 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",
+  },
+  historyModalGradient: {
+    flex: 1,
+    paddingTop: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  historyModalHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  historyModalIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#F0E8FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyModalSubtitle: {
+    fontSize: 13,
+    color: "#7D6F81",
+    marginTop: 2,
+  },
+  historyModalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F5F0FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyListEmptyCenter: {
+    flexGrow: 1,
+    justifyContent: "center",
+  },
+  emptyHistoryIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyHistoryTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#2F2436",
+    marginBottom: 8,
+  },
+  emptyHistoryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#8F72C5",
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 8,
+    marginTop: 20,
+    shadowColor: "#8F72C5",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  emptyHistoryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  historyDateBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#8F72C5",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  historyDateBadgeToday: {
+    shadowColor: "#8F72C5",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  historyDateDay: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  historyDateMonth: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    textTransform: "uppercase",
+  },
+  historyDeleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#FFEBEE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyCardBody: {
+    gap: 12,
+  },
+  historyFlowIconContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  historyFlowLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#5E5265",
+  },
+  historyFlowValueContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  historyFlowDrop: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#F0E8FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyMoodsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  historyMoodsLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#5E5265",
   },
   moodChip: {
     minWidth: "31%",
@@ -4734,6 +6012,82 @@ const styles = StyleSheet.create({
     color: "#76697D",
     fontSize: 14,
     lineHeight: 20,
+  },
+  tipsSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  tipsSectionBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#F0E8FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tipsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  tipCardNew: {
+    width: "48%",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E7DCE6",
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+    gap: 12,
+  },
+  tipCardLeft: {
+    width: "100%",
+  },
+  tipIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tipContent: {
+    flex: 1,
+    gap: 4,
+  },
+  tipTitleNew: {
+    color: "#2F2436",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  tipDetailNew: {
+    color: "#7A6D7F",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  tipArrow: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#F0E8FA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tipsMoreButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#8F72C5",
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginTop: 8,
+    gap: 8,
+  },
+  tipsMoreButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
   breathingContainer: {
     borderRadius: 32,
@@ -4854,6 +6208,351 @@ const styles = StyleSheet.create({
   breathingStartButtonText: {
     color: "#FFFFFF",
     fontSize: 17,
+    fontWeight: "700",
+  },
+  mentalHealthContainer: {
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "#EADCF8",
+    padding: 18,
+    gap: 14,
+  },
+  mentalHealthHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  mentalHealthHeaderTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  mentalHealthTitle: {
+    color: "#2F2436",
+    fontSize: 21,
+    fontWeight: "800",
+  },
+  mentalHealthSubtitle: {
+    color: "#796A82",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mentalHealthPlanBadge: {
+    minWidth: 54,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    alignItems: "center",
+  },
+  mentalHealthPlanBadgePro: {
+    backgroundColor: "#8F72C5",
+  },
+  mentalHealthPlanBadgeFree: {
+    backgroundColor: "#D6C6EC",
+  },
+  mentalHealthPlanBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  mentalHealthSafetyRow: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E7DAF6",
+    backgroundColor: "#FFFFFFEE",
+    padding: 10,
+    gap: 8,
+  },
+  mentalHealthSafetyText: {
+    color: "#6D5E76",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  mentalHealthSafetyButton: {
+    alignSelf: "flex-start",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D3BEEB",
+    backgroundColor: "#F8F2FF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  mentalHealthSafetyButtonText: {
+    color: "#6D4BA4",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mentalHealthStatsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  mentalHealthStatCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E7DDF3",
+    backgroundColor: "#FFFFFFEE",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    gap: 2,
+  },
+  mentalHealthStatValue: {
+    color: "#32253B",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  mentalHealthStatLabel: {
+    color: "#7A6C83",
+    fontSize: 11,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  mentalHealthPhaseCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E6DAF6",
+    backgroundColor: "#F8F3FF",
+    padding: 12,
+    gap: 4,
+  },
+  mentalHealthPhaseText: {
+    color: "#6D4BA4",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mentalHealthRecommendedText: {
+    color: "#34293D",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  mentalHealthLoggedTodayText: {
+    color: "#3A965F",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mentalHealthLockedCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E4D6F6",
+    backgroundColor: "#FFFFFFEE",
+    padding: 12,
+    gap: 10,
+  },
+  mentalHealthLockedTitle: {
+    color: "#34293D",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  mentalHealthLockedText: {
+    color: "#786A81",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mentalHealthUnlockButton: {
+    marginTop: 2,
+    borderRadius: 14,
+    backgroundColor: "#8F72C5",
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  mentalHealthUnlockButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  mentalProgramChipRow: {
+    gap: 8,
+    paddingRight: 6,
+  },
+  mentalProgramChip: {
+    minWidth: 180,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#DCCCF0",
+    backgroundColor: "#FFFFFFEE",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3,
+  },
+  mentalProgramChipActive: {
+    backgroundColor: "#8F72C5",
+    borderColor: "#8F72C5",
+  },
+  mentalProgramChipText: {
+    color: "#3D3048",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  mentalProgramChipTextActive: {
+    color: "#FFFFFF",
+  },
+  mentalProgramChipProgressText: {
+    color: "#786A81",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  mentalProgramDetailCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E4D7F3",
+    backgroundColor: "#FFFFFFF2",
+    padding: 12,
+    gap: 4,
+  },
+  mentalProgramTitle: {
+    color: "#2F2436",
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  mentalProgramSubtitle: {
+    color: "#6D5E76",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  mentalProgramDescription: {
+    color: "#786A81",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mentalProgramRoutineText: {
+    color: "#7E63B2",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  mentalSessionChipRow: {
+    gap: 8,
+    paddingRight: 6,
+  },
+  mentalSessionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#DDCFEF",
+    backgroundColor: "#FFFFFFEE",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  mentalSessionChipActive: {
+    backgroundColor: "#EBDDFF",
+    borderColor: "#A887D9",
+  },
+  mentalSessionChipText: {
+    color: "#6A5B73",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mentalSessionChipTextActive: {
+    color: "#5E3D95",
+  },
+  mentalSessionDetailCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E4D8F2",
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    gap: 6,
+  },
+  mentalSessionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  mentalSessionTitle: {
+    flex: 1,
+    color: "#352A3D",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  mentalSessionMetaText: {
+    color: "#7E63B2",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mentalSessionPromptText: {
+    color: "#6F6278",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mentalSessionStepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  mentalSessionStepBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 6,
+    backgroundColor: "#8F72C5",
+  },
+  mentalSessionStepText: {
+    flex: 1,
+    color: "#4D4255",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mentalRatingLabel: {
+    color: "#4C3D54",
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  mentalRatingRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  mentalRatingChip: {
+    width: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E1D4EE",
+    backgroundColor: "#FFFFFFEE",
+    alignItems: "center",
+    paddingVertical: 7,
+    gap: 2,
+  },
+  mentalRatingChipActive: {
+    borderColor: "#8F72C5",
+    backgroundColor: "#F1E7FF",
+  },
+  mentalRatingEmoji: {
+    fontSize: 16,
+  },
+  mentalRatingValue: {
+    color: "#71637A",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mentalRatingValueActive: {
+    color: "#5D4193",
+  },
+  mentalJournalInput: {
+    minHeight: 96,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E1D4EE",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#32253B",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mentalSaveButton: {
+    marginTop: 2,
+    borderRadius: 14,
+    backgroundColor: "#8F72C5",
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  mentalSaveButtonDisabled: {
+    backgroundColor: "#C8B7E0",
+  },
+  mentalSaveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
     fontWeight: "700",
   },
   sectionTitle: {
