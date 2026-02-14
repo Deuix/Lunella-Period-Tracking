@@ -6,28 +6,44 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
-  Animated,
-  Easing,
-  Modal,
-  Pressable,
-  ScrollView,
-  Share,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  useColorScheme,
-  View,
+    Alert,
+    Animated,
+    Easing,
+    Modal,
+    Pressable,
+    ScrollView,
+    Share,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useColorScheme,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getDateLocale, type SupportedLanguage } from "../i18n";
+import {
+    APP_STATE_STORAGE_KEY,
+    BREATHING_STEPS,
+    BREATHING_TOTAL_ROUNDS,
+    DEFAULT_CYCLE_LENGTH,
+    DEFAULT_PERIOD_LENGTH,
+    DEFAULT_PROFILE_AVATAR_ICON,
+    DEFAULT_SELECTED_FLOW,
+    GOAL_OPTIONS,
+    INITIAL_AI_MESSAGES,
+    MENSTRUAL_FLOW_OPTIONS,
+    MOOD_OPTIONS,
+    NAV_ITEMS,
+    PROFILE_AVATAR_OPTIONS,
+    WEEK_DAY_KEYS,
+} from "../features/main-screen/constants";
 import { useAiAssistant } from "../features/main-screen/hooks/useAiAssistant";
 import { useRevenueCatPro } from "../features/main-screen/hooks/useRevenueCatPro";
 import {
-  DecorativeBackground,
-  NumberAdjuster,
-  WelcomeIllustration,
+    CelebrationConfetti,
+    DecorativeBackground,
+    NumberAdjuster,
+    WelcomeIllustration,
 } from "../features/main-screen/shared-components";
 import { getMainScreenStyles } from "../features/main-screen/styles";
 import { AiTab } from "../features/main-screen/tabs/AiTab";
@@ -36,60 +52,45 @@ import { InsightsTab } from "../features/main-screen/tabs/InsightsTab";
 import { ProfileTab } from "../features/main-screen/tabs/ProfileTab";
 import { TipsTab } from "../features/main-screen/tabs/TipsTab";
 import {
-  MainScreenThemeProvider,
-  pickThemeValue,
-  resolveThemePreference,
+    MainScreenThemeProvider,
+    pickThemeValue,
+    resolveThemePreference,
 } from "../features/main-screen/theme";
-import {
-  APP_STATE_STORAGE_KEY,
-  BREATHING_STEPS,
-  BREATHING_TOTAL_ROUNDS,
-  DEFAULT_CYCLE_LENGTH,
-  DEFAULT_PROFILE_AVATAR_ICON,
-  DEFAULT_PERIOD_LENGTH,
-  DEFAULT_SELECTED_FLOW,
-  GOAL_OPTIONS,
-  INITIAL_AI_MESSAGES,
-  MENSTRUAL_FLOW_OPTIONS,
-  MOOD_OPTIONS,
-  NAV_ITEMS,
-  PROFILE_AVATAR_OPTIONS,
-  WEEK_DAY_KEYS,
-} from "../features/main-screen/constants";
-import {
-  addDays,
-  addMonths,
-  buildCalendarDays,
-  buildMonthlyInsight,
-  buildPregnancyProbabilityDetail,
-  diffInDays,
-  getCycleContext,
-  getDayCategory,
-  isSameDay,
-  startOfDay,
-  startOfMonth,
-} from "../features/main-screen/utils";
 import type {
-  BreathPhase,
-  DecoratedCalendarDay,
-  GoalOption,
-  HomeTab,
-  PersistedAppState,
-  ProfileAvatarIcon,
-  ProfileView,
-  ProUpsellSource,
-  SymptomLogEntry,
-  ThemePreference,
+    BreathPhase,
+    DecoratedCalendarDay,
+    GoalOption,
+    HomeTab,
+    PersistedAppState,
+    ProfileAvatarIcon,
+    ProfileView,
+    ProUpsellSource,
+    SymptomLogEntry,
+    ThemePreference,
 } from "../features/main-screen/types";
-import type { RevenueCatPlanId } from "../services/revenuecat";
 import {
-  clearPushInstallationId,
-  ensurePushInstallationId,
-  getDefaultDailyReminderHour,
-  getDeviceTimeZone,
-  registerForPushNotificationsAsync,
-  syncPushProfileToSupabase,
+    addDays,
+    addMonths,
+    buildCalendarDays,
+    buildMonthlyInsight,
+    buildPregnancyProbabilityDetail,
+    diffInDays,
+    getCycleContext,
+    getDayCategory,
+    isSameDay,
+    startOfDay,
+    startOfMonth,
+} from "../features/main-screen/utils";
+import { getDateLocale, type SupportedLanguage } from "../i18n";
+import {
+    clearPushInstallationId,
+    ensurePushInstallationId,
+    getDefaultDailyReminderHour,
+    getDeviceTimeZone,
+    registerForPushNotificationsAsync,
+    syncPushProfileToSupabase,
 } from "../services/pushNotifications";
+import type { RevenueCatPlanId } from "../services/revenuecat";
 
 export default function Index() {
   const { t, i18n } = useTranslation();
@@ -117,9 +118,15 @@ export default function Index() {
   const [remindersEnabled, setRemindersEnabled] = useState(true);
   const [fertilityRemindersEnabled, setFertilityRemindersEnabled] = useState(false);
   const [ovulationRemindersEnabled, setOvulationRemindersEnabled] = useState(false);
+  const [celebrationEffectsEnabled, setCelebrationEffectsEnabled] = useState(true);
+  const [periodStartCelebrationEnabled, setPeriodStartCelebrationEnabled] = useState(true);
+  const [periodEndCelebrationEnabled, setPeriodEndCelebrationEnabled] = useState(true);
+  const [lastPeriodStartCelebrationDateISO, setLastPeriodStartCelebrationDateISO] = useState<string | null>(null);
+  const [lastPeriodEndCelebrationDateISO, setLastPeriodEndCelebrationDateISO] = useState<string | null>(null);
   const [dailyReminderHour, setDailyReminderHour] = useState(getDefaultDailyReminderHour());
   const [pushInstallationId, setPushInstallationId] = useState<string | null>(null);
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const [confettiRunId, setConfettiRunId] = useState(0);
 
   const [onboardingMonth, setOnboardingMonth] = useState(startOfMonth(new Date()));
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
@@ -281,6 +288,11 @@ export default function Index() {
     [setPushReminderToggle],
   );
 
+  const triggerConfetti = useCallback(() => {
+    setConfettiRunId((currentId) => currentId + 1);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
   useEffect(() => {
     const hydrateAppState = async () => {
       try {
@@ -340,6 +352,27 @@ export default function Index() {
         }
         if (typeof storedState.ovulationRemindersEnabled === "boolean") {
           setOvulationRemindersEnabled(storedState.ovulationRemindersEnabled);
+        }
+        if (typeof storedState.celebrationEffectsEnabled === "boolean") {
+          setCelebrationEffectsEnabled(storedState.celebrationEffectsEnabled);
+        }
+        if (typeof storedState.periodStartCelebrationEnabled === "boolean") {
+          setPeriodStartCelebrationEnabled(storedState.periodStartCelebrationEnabled);
+        }
+        if (typeof storedState.periodEndCelebrationEnabled === "boolean") {
+          setPeriodEndCelebrationEnabled(storedState.periodEndCelebrationEnabled);
+        }
+        if (
+          typeof storedState.lastPeriodStartCelebrationDateISO === "string"
+          || storedState.lastPeriodStartCelebrationDateISO === null
+        ) {
+          setLastPeriodStartCelebrationDateISO(storedState.lastPeriodStartCelebrationDateISO);
+        }
+        if (
+          typeof storedState.lastPeriodEndCelebrationDateISO === "string"
+          || storedState.lastPeriodEndCelebrationDateISO === null
+        ) {
+          setLastPeriodEndCelebrationDateISO(storedState.lastPeriodEndCelebrationDateISO);
         }
         if (typeof storedState.dailyReminderHour === "number") {
           setDailyReminderHour(Math.max(0, Math.min(23, Math.trunc(storedState.dailyReminderHour))));
@@ -469,6 +502,46 @@ export default function Index() {
     periodLength,
     pushInstallationId,
     remindersEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!isHydrated || !isOnboardingDone || !celebrationEffectsEnabled) {
+      return;
+    }
+
+    const todayISO = startOfDay(new Date()).toISOString();
+    const periodStartISO = startOfDay(lastPeriodDate).toISOString();
+    const periodEndISO = addDays(startOfDay(lastPeriodDate), periodLength).toISOString();
+
+    if (
+      periodStartCelebrationEnabled
+      && todayISO === periodStartISO
+      && lastPeriodStartCelebrationDateISO !== todayISO
+    ) {
+      setLastPeriodStartCelebrationDateISO(todayISO);
+      triggerConfetti();
+      return;
+    }
+
+    if (
+      periodEndCelebrationEnabled
+      && todayISO === periodEndISO
+      && lastPeriodEndCelebrationDateISO !== todayISO
+    ) {
+      setLastPeriodEndCelebrationDateISO(todayISO);
+      triggerConfetti();
+    }
+  }, [
+    celebrationEffectsEnabled,
+    isHydrated,
+    isOnboardingDone,
+    lastPeriodDate,
+    lastPeriodEndCelebrationDateISO,
+    lastPeriodStartCelebrationDateISO,
+    periodEndCelebrationEnabled,
+    periodLength,
+    periodStartCelebrationEnabled,
+    triggerConfetti,
   ]);
 
   useEffect(() => {
@@ -671,6 +744,11 @@ export default function Index() {
       remindersEnabled,
       fertilityRemindersEnabled,
       ovulationRemindersEnabled,
+      celebrationEffectsEnabled,
+      periodStartCelebrationEnabled,
+      periodEndCelebrationEnabled,
+      lastPeriodStartCelebrationDateISO,
+      lastPeriodEndCelebrationDateISO,
       dailyReminderHour,
       selectedFlow,
       selectedMoods,
@@ -689,6 +767,7 @@ export default function Index() {
     aiMessages,
     aiUsageCount,
     aiUsageDateISO,
+    celebrationEffectsEnabled,
     cycleLength,
     dailyReminderHour,
     fertilityRemindersEnabled,
@@ -698,11 +777,15 @@ export default function Index() {
     isHydrated,
     isOnboardingDone,
     isPro,
+    lastPeriodEndCelebrationDateISO,
+    lastPeriodStartCelebrationDateISO,
     lastPeriodDate,
     name,
     profileAvatarIcon,
     periodLength,
     pinLockEnabled,
+    periodEndCelebrationEnabled,
+    periodStartCelebrationEnabled,
     remindersEnabled,
     ovulationRemindersEnabled,
     selectedFlow,
@@ -915,9 +998,15 @@ export default function Index() {
               setRemindersEnabled(true);
               setFertilityRemindersEnabled(false);
               setOvulationRemindersEnabled(false);
+              setCelebrationEffectsEnabled(true);
+              setPeriodStartCelebrationEnabled(true);
+              setPeriodEndCelebrationEnabled(true);
+              setLastPeriodStartCelebrationDateISO(null);
+              setLastPeriodEndCelebrationDateISO(null);
               setDailyReminderHour(getDefaultDailyReminderHour());
               setPushInstallationId(null);
               setExpoPushToken(null);
+              setConfettiRunId(0);
               setOnboardingMonth(startOfMonth(today));
               setActiveTab("home");
               setProfileView("main");
@@ -1327,11 +1416,7 @@ export default function Index() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Show confirmation
-    Alert.alert(
-      t("home.periodStartsToday"),
-      `${t("onboarding.lastPeriodDate", { date: today.toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" }) })}`,
-      [{ text: "OK" }]
-    );
+    setConfettiRunId((prev) => prev + 1);
   };
 
   const handleSetAsPeriodStart = (date: Date) => {
@@ -1340,11 +1425,7 @@ export default function Index() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Show confirmation
-    Alert.alert(
-      t("home.setAsPeriodStart"),
-      `${t("onboarding.lastPeriodDate", { date: normalizedDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" }) })}`,
-      [{ text: "OK" }]
-    );
+    setConfettiRunId((prev) => prev + 1);
   };
 
   const handleSendAiMessage = useCallback(
@@ -1703,6 +1784,7 @@ export default function Index() {
 
     return (
       <ProfileTab
+        celebrationEffectsEnabled={celebrationEffectsEnabled}
         cycleContext={cycleContext}
         cycleLength={cycleLength}
         dateLocale={dateLocale}
@@ -1735,6 +1817,7 @@ export default function Index() {
         onRestoreSubscription={handleRestoreSubscription}
         onSaveProfileName={handleSaveProfileName}
         onSetActiveTab={setActiveTab}
+        onSetCelebrationEffectsEnabled={setCelebrationEffectsEnabled}
         onSetCycleLength={setCycleLength}
         onSetDailyReminderHour={setDailyReminderHour}
         onSetDebugProOverrideEnabled={setIsDebugProOverrideEnabled}
@@ -1744,6 +1827,8 @@ export default function Index() {
         onSetHealthSyncEnabled={setHealthSyncEnabled}
         onSetInsightNudgesEnabled={setInsightNudgesEnabled}
         onSetLanguagePickerVisible={setLanguagePickerVisible}
+        onSetPeriodEndCelebrationEnabled={setPeriodEndCelebrationEnabled}
+        onSetPeriodStartCelebrationEnabled={setPeriodStartCelebrationEnabled}
         onSetOvulationRemindersEnabled={handleSetOvulationRemindersEnabled}
         onSetPeriodLength={setPeriodLength}
         onSetPinLockEnabled={setPinLockEnabled}
@@ -1751,7 +1836,9 @@ export default function Index() {
         onSetRemindersEnabled={handleSetRemindersEnabled}
         onSetSubscriptionModalVisible={setIsSubscriptionModalVisible}
         ovulationRemindersEnabled={ovulationRemindersEnabled}
+        periodEndCelebrationEnabled={periodEndCelebrationEnabled}
         periodLength={periodLength}
+        periodStartCelebrationEnabled={periodStartCelebrationEnabled}
         pinLockEnabled={pinLockEnabled}
         profileView={profileView}
         remindersEnabled={remindersEnabled}
@@ -1825,6 +1912,7 @@ export default function Index() {
       <StatusBar style={resolvedTheme === "dark" ? "light" : "dark"} />
       <SafeAreaView style={styles.safeArea}>
         <DecorativeBackground />
+        <CelebrationConfetti runId={confettiRunId} />
         <View style={styles.postOnboardingWrapper}>
           <View style={styles.tabContent}>{renderTabContent()}</View>
 

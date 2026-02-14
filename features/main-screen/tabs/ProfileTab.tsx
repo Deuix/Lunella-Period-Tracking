@@ -32,6 +32,7 @@ type ProfileTabProps = {
   dailyReminderHour: number;
   draftProfileAvatarIcon: ProfileAvatarIcon;
   draftProfileName: string;
+  celebrationEffectsEnabled: boolean;
   fertilityRemindersEnabled: boolean;
   goals: GoalOption[];
   hasProAccess: boolean;
@@ -57,6 +58,7 @@ type ProfileTabProps = {
   onSaveProfileName: () => void;
   onSetActiveTab: (tab: HomeTab) => void;
   onSetCycleLength: (value: number) => void;
+  onSetCelebrationEffectsEnabled: (enabled: boolean) => void;
   onSetDailyReminderHour: (value: number) => void;
   onSetDebugProOverrideEnabled: (enabled: boolean) => void;
   onSetDraftProfileAvatarIcon: (icon: ProfileAvatarIcon) => void;
@@ -65,6 +67,8 @@ type ProfileTabProps = {
   onSetFertilityRemindersEnabled: (enabled: boolean) => void;
   onSetInsightNudgesEnabled: (enabled: boolean) => void;
   onSetLanguagePickerVisible: (visible: boolean) => void;
+  onSetPeriodEndCelebrationEnabled: (enabled: boolean) => void;
+  onSetPeriodStartCelebrationEnabled: (enabled: boolean) => void;
   onSetPinLockEnabled: (enabled: boolean) => void;
   onSetProfileView: (view: ProfileView) => void;
   onSetOvulationRemindersEnabled: (enabled: boolean) => void;
@@ -72,7 +76,9 @@ type ProfileTabProps = {
   onSetRemindersEnabled: (enabled: boolean) => void;
   onSetSubscriptionModalVisible: (visible: boolean) => void;
   ovulationRemindersEnabled: boolean;
+  periodEndCelebrationEnabled: boolean;
   periodLength: number;
+  periodStartCelebrationEnabled: boolean;
   pinLockEnabled: boolean;
   profileView: ProfileView;
   remindersEnabled: boolean;
@@ -192,6 +198,7 @@ const ToggleRow = ({
   onValueChange,
   isPro = false,
   isFirst = false,
+  disabled = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -200,12 +207,13 @@ const ToggleRow = ({
   onValueChange: (val: boolean) => void;
   isPro?: boolean;
   isFirst?: boolean;
+  disabled?: boolean;
 }) => {
   const styles = useMainScreenStyles();
   const { resolvedTheme } = useMainScreenTheme();
 
   return (
-    <View style={[styles.newSettingsRow, !isFirst && styles.newSettingsRowNotFirst]}>
+    <View style={[styles.newSettingsRow, !isFirst && styles.newSettingsRowNotFirst, disabled && { opacity: 0.55 }]}>
       <View style={styles.newSettingsRowLeft}>
         <View style={styles.newSettingsIcon}>
           <Ionicons name={icon} size={20} color={pickThemeValue(resolvedTheme, "#8F72C5", "#C5ADFA")} />
@@ -223,6 +231,7 @@ const ToggleRow = ({
           </View>
         )}
         <Switch
+          disabled={disabled}
           value={value}
           onValueChange={onValueChange}
           trackColor={{
@@ -240,6 +249,7 @@ const ToggleRow = ({
 export function ProfileTab({
   cycleContext,
   cycleLength,
+  celebrationEffectsEnabled,
   dateLocale,
   dailyReminderHour,
   draftProfileAvatarIcon,
@@ -268,6 +278,7 @@ export function ProfileTab({
   onRestoreSubscription,
   onSaveProfileName,
   onSetActiveTab,
+  onSetCelebrationEffectsEnabled,
   onSetCycleLength,
   onSetDailyReminderHour,
   onSetDebugProOverrideEnabled,
@@ -277,6 +288,8 @@ export function ProfileTab({
   onSetHealthSyncEnabled,
   onSetInsightNudgesEnabled,
   onSetLanguagePickerVisible,
+  onSetPeriodEndCelebrationEnabled,
+  onSetPeriodStartCelebrationEnabled,
   onSetOvulationRemindersEnabled,
   onSetPinLockEnabled,
   onSetProfileView,
@@ -284,7 +297,9 @@ export function ProfileTab({
   onSetRemindersEnabled,
   onSetSubscriptionModalVisible,
   ovulationRemindersEnabled,
+  periodEndCelebrationEnabled,
   periodLength,
+  periodStartCelebrationEnabled,
   pinLockEnabled,
   profileView,
   remindersEnabled,
@@ -486,6 +501,29 @@ export function ProfileTab({
               subtitle={t("settings.insightNudgesDesc")}
               value={insightNudgesEnabled}
               onValueChange={onSetInsightNudgesEnabled}
+            />
+            <ToggleRow
+              icon="sparkles-outline"
+              title={t("settings.celebrationEffects")}
+              subtitle={t("settings.celebrationEffectsDesc")}
+              value={celebrationEffectsEnabled}
+              onValueChange={onSetCelebrationEffectsEnabled}
+            />
+            <ToggleRow
+              icon="water-outline"
+              title={t("settings.periodStartConfetti")}
+              subtitle={t("settings.periodStartConfettiDesc")}
+              value={periodStartCelebrationEnabled}
+              onValueChange={onSetPeriodStartCelebrationEnabled}
+              disabled={!celebrationEffectsEnabled}
+            />
+            <ToggleRow
+              icon="checkmark-circle-outline"
+              title={t("settings.periodEndConfetti")}
+              subtitle={t("settings.periodEndConfettiDesc")}
+              value={periodEndCelebrationEnabled}
+              onValueChange={onSetPeriodEndCelebrationEnabled}
+              disabled={!celebrationEffectsEnabled}
             />
             <NumberAdjuster
               label={t("settings.reminderTime", { hour: `${String(dailyReminderHour).padStart(2, "0")}:00` })}
