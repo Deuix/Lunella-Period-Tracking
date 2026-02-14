@@ -82,6 +82,14 @@ import type {
   ThemePreference,
 } from "../features/main-screen/types";
 import type { RevenueCatPlanId } from "../services/revenuecat";
+import {
+  clearPushInstallationId,
+  ensurePushInstallationId,
+  getDefaultDailyReminderHour,
+  getDeviceTimeZone,
+  registerForPushNotificationsAsync,
+  syncPushProfileToSupabase,
+} from "../services/pushNotifications";
 
 export default function Index() {
   const { t, i18n } = useTranslation();
@@ -107,6 +115,11 @@ export default function Index() {
   const [cycleLength, setCycleLength] = useState(DEFAULT_CYCLE_LENGTH);
   const [periodLength, setPeriodLength] = useState(DEFAULT_PERIOD_LENGTH);
   const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [fertilityRemindersEnabled, setFertilityRemindersEnabled] = useState(false);
+  const [ovulationRemindersEnabled, setOvulationRemindersEnabled] = useState(false);
+  const [dailyReminderHour, setDailyReminderHour] = useState(getDefaultDailyReminderHour());
+  const [pushInstallationId, setPushInstallationId] = useState<string | null>(null);
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
 
   const [onboardingMonth, setOnboardingMonth] = useState(startOfMonth(new Date()));
   const [activeTab, setActiveTab] = useState<HomeTab>("home");
@@ -201,6 +214,73 @@ export default function Index() {
     t,
   });
 
+  const requestPushToken = useCallback(
+    async (showFailureAlert: boolean): Promise<string | null> => {
+      const registration = await registerForPushNotificationsAsync();
+
+      if (registration.permissionGranted && registration.token) {
+        setExpoPushToken(registration.token);
+        return registration.token;
+      }
+
+      setExpoPushToken(null);
+
+      if (!showFailureAlert) {
+        return null;
+      }
+
+      if (registration.reason === "unsupported_platform") {
+        Alert.alert(t("settings.pushUnavailableTitle"), t("settings.pushUnavailableMessage"));
+        return null;
+      }
+
+      if (registration.reason === "simulator") {
+        Alert.alert(t("settings.pushSimulatorTitle"), t("settings.pushSimulatorMessage"));
+        return null;
+      }
+
+      Alert.alert(t("settings.pushPermissionDeniedTitle"), t("settings.pushPermissionDeniedMessage"));
+      return null;
+    },
+    [t],
+  );
+
+  const setPushReminderToggle = useCallback(
+    (enabled: boolean, setter: (nextValue: boolean) => void) => {
+      if (!enabled) {
+        setter(false);
+        return;
+      }
+
+      void (async () => {
+        const pushToken = await requestPushToken(true);
+        setter(Boolean(pushToken));
+      })();
+    },
+    [requestPushToken],
+  );
+
+  const handleSetRemindersEnabled = useCallback(
+    (enabled: boolean) => {
+      setPushReminderToggle(enabled, setRemindersEnabled);
+    },
+    [setPushReminderToggle],
+  );
+
+  const handleSetFertilityRemindersEnabled = useCallback(
+    (enabled: boolean) => {
+      setPushReminderToggle(enabled, setFertilityRemindersEnabled);
+    },
+    [setPushReminderToggle],
+  );
+
+  const handleSetOvulationRemindersEnabled = useCallback(
+    (enabled: boolean) => {
+      setPushReminderToggle(enabled, setOvulationRemindersEnabled);
+    },
+    [setPushReminderToggle],
+  );
+
   useEffect(() => {
     const hydrateAppState = async () => {
       try {
@@ -255,6 +335,15 @@ export default function Index() {
         if (typeof storedState.remindersEnabled === "boolean") {
           setRemindersEnabled(storedState.remindersEnabled);
         }
+        if (typeof storedState.fertilityRemindersEnabled === "boolean") {
+          setFertilityRemindersEnabled(storedState.fertilityRemindersEnabled);
+        }
+        if (typeof storedState.ovulationRemindersEnabled === "boolean") {
+          setOvulationRemindersEnabled(storedState.ovulationRemindersEnabled);
+        }
+        if (typeof storedState.dailyReminderHour === "number") {
+          setDailyReminderHour(Math.max(0, Math.min(23, Math.trunc(storedState.dailyReminderHour))));
+        }
         if (typeof storedState.selectedFlow === "string") {
           setSelectedFlow(storedState.selectedFlow);
         }
@@ -292,6 +381,95 @@ export default function Index() {
 
     void hydrateAppState();
   }, [setAiMessages, setAiUsageCount, setAiUsageDateISO]);
+
+  useEffect(() => {
+    if (!isHydrated || pushInstallationId) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const ensureInstallationId = async () => {
+      const installationId = await ensurePushInstallationId();
+      if (isMounted) {
+        setPushInstallationId(installationId);
+      }
+    };
+
+    void ensureInstallationId();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isHydrated, pushInstallationId]);
+
+  const hasAnyPushReminderEnabled = remindersEnabled || fertilityRemindersEnabled || ovulationRemindersEnabled;
+
+  useEffect(() => {
+    if (!isHydrated || !isOnboardingDone || !hasAnyPushReminderEnabled || expoPushToken) {
+      return;
+    }
+
+    void (async () => {
+      const pushToken = await requestPushToken(false);
+      if (!pushToken) {
+        setRemindersEnabled(false);
+        setFertilityRemindersEnabled(false);
+        setOvulationRemindersEnabled(false);
+      }
+    })();
+  }, [
+    expoPushToken,
+    fertilityRemindersEnabled,
+    hasAnyPushReminderEnabled,
+    isHydrated,
+    isOnboardingDone,
+    ovulationRemindersEnabled,
+    requestPushToken,
+  ]);
+
+  useEffect(() => {
+    if (!isHydrated || !isOnboardingDone || !pushInstallationId) {
+      return;
+    }
+
+    const syncPushProfile = async () => {
+      try {
+        await syncPushProfileToSupabase({
+          installationId: pushInstallationId,
+          expoPushToken,
+          remindersEnabled,
+          fertilityRemindersEnabled,
+          ovulationRemindersEnabled,
+          cycleLength,
+          periodLength,
+          lastPeriodDateISO: lastPeriodDate.toISOString(),
+          language: i18n.language,
+          timeZone: getDeviceTimeZone(),
+          dailyReminderHour,
+        });
+      } catch (error) {
+        if (__DEV__) {
+          console.warn("[Push] Failed to sync reminder profile", error);
+        }
+      }
+    };
+
+    void syncPushProfile();
+  }, [
+    cycleLength,
+    dailyReminderHour,
+    expoPushToken,
+    fertilityRemindersEnabled,
+    i18n.language,
+    isHydrated,
+    isOnboardingDone,
+    lastPeriodDate,
+    ovulationRemindersEnabled,
+    periodLength,
+    pushInstallationId,
+    remindersEnabled,
+  ]);
 
   useEffect(() => {
     onboardingAnimation.setValue(0);
@@ -491,6 +669,9 @@ export default function Index() {
       cycleLength,
       periodLength,
       remindersEnabled,
+      fertilityRemindersEnabled,
+      ovulationRemindersEnabled,
+      dailyReminderHour,
       selectedFlow,
       selectedMoods,
       insightNudgesEnabled,
@@ -509,6 +690,8 @@ export default function Index() {
     aiUsageCount,
     aiUsageDateISO,
     cycleLength,
+    dailyReminderHour,
+    fertilityRemindersEnabled,
     goals,
     healthSyncEnabled,
     insightNudgesEnabled,
@@ -521,6 +704,7 @@ export default function Index() {
     periodLength,
     pinLockEnabled,
     remindersEnabled,
+    ovulationRemindersEnabled,
     selectedFlow,
     selectedMoods,
     symptomLogs,
@@ -693,7 +877,29 @@ export default function Index() {
           void (async () => {
             try {
               const today = startOfDay(new Date());
+
+              if (pushInstallationId) {
+                try {
+                  await syncPushProfileToSupabase({
+                    installationId: pushInstallationId,
+                    expoPushToken: null,
+                    remindersEnabled: false,
+                    fertilityRemindersEnabled: false,
+                    ovulationRemindersEnabled: false,
+                    cycleLength,
+                    periodLength,
+                    lastPeriodDateISO: lastPeriodDate.toISOString(),
+                    language: i18n.language,
+                    timeZone: getDeviceTimeZone(),
+                    dailyReminderHour,
+                  });
+                } catch {
+                  // Best effort only: local reset should still continue.
+                }
+              }
+
               await AsyncStorage.removeItem(APP_STATE_STORAGE_KEY);
+              await clearPushInstallationId();
 
               setIsOnboardingDone(false);
               setThemePreference("system");
@@ -707,6 +913,11 @@ export default function Index() {
               setCycleLength(DEFAULT_CYCLE_LENGTH);
               setPeriodLength(DEFAULT_PERIOD_LENGTH);
               setRemindersEnabled(true);
+              setFertilityRemindersEnabled(false);
+              setOvulationRemindersEnabled(false);
+              setDailyReminderHour(getDefaultDailyReminderHour());
+              setPushInstallationId(null);
+              setExpoPushToken(null);
               setOnboardingMonth(startOfMonth(today));
               setActiveTab("home");
               setProfileView("main");
@@ -743,7 +954,19 @@ export default function Index() {
         },
       },
     ]);
-  }, [setAiInput, setAiMessages, setAiUsageCount, setAiUsageDateISO, t]);
+  }, [
+    cycleLength,
+    dailyReminderHour,
+    i18n.language,
+    lastPeriodDate,
+    periodLength,
+    pushInstallationId,
+    setAiInput,
+    setAiMessages,
+    setAiUsageCount,
+    setAiUsageDateISO,
+    t,
+  ]);
 
   const proInsightsSummary = useMemo(() => {
     if (recentSymptomLogs.length === 0) {
@@ -1313,7 +1536,7 @@ export default function Index() {
           </View>
           <Switch
             value={remindersEnabled}
-            onValueChange={setRemindersEnabled}
+            onValueChange={handleSetRemindersEnabled}
             trackColor={{
               false: themedColor("#D2C4DA", "#4D435A"),
               true: themedColor("#AB8FD9", "#7C67B0"),
@@ -1483,8 +1706,10 @@ export default function Index() {
         cycleContext={cycleContext}
         cycleLength={cycleLength}
         dateLocale={dateLocale}
+        dailyReminderHour={dailyReminderHour}
         draftProfileName={draftProfileName}
         draftProfileAvatarIcon={draftProfileAvatarIcon}
+        fertilityRemindersEnabled={fertilityRemindersEnabled}
         goals={goals}
         hasProAccess={hasProAccess}
         healthSyncEnabled={healthSyncEnabled}
@@ -1511,17 +1736,21 @@ export default function Index() {
         onSaveProfileName={handleSaveProfileName}
         onSetActiveTab={setActiveTab}
         onSetCycleLength={setCycleLength}
+        onSetDailyReminderHour={setDailyReminderHour}
         onSetDebugProOverrideEnabled={setIsDebugProOverrideEnabled}
         onSetDraftProfileName={setDraftProfileName}
         onSetDraftProfileAvatarIcon={setDraftProfileAvatarIcon}
+        onSetFertilityRemindersEnabled={handleSetFertilityRemindersEnabled}
         onSetHealthSyncEnabled={setHealthSyncEnabled}
         onSetInsightNudgesEnabled={setInsightNudgesEnabled}
         onSetLanguagePickerVisible={setLanguagePickerVisible}
+        onSetOvulationRemindersEnabled={handleSetOvulationRemindersEnabled}
         onSetPeriodLength={setPeriodLength}
         onSetPinLockEnabled={setPinLockEnabled}
         onSetProfileView={setProfileView}
-        onSetRemindersEnabled={setRemindersEnabled}
+        onSetRemindersEnabled={handleSetRemindersEnabled}
         onSetSubscriptionModalVisible={setIsSubscriptionModalVisible}
+        ovulationRemindersEnabled={ovulationRemindersEnabled}
         periodLength={periodLength}
         pinLockEnabled={pinLockEnabled}
         profileView={profileView}

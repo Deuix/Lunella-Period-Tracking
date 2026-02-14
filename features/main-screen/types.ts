@@ -31,6 +31,9 @@ export type PersistedAppState = {
   cycleLength: number;
   periodLength: number;
   remindersEnabled: boolean;
+  fertilityRemindersEnabled: boolean;
+  ovulationRemindersEnabled: boolean;
+  dailyReminderHour: number;
   selectedFlow: string;
   selectedMoods: string[];
   insightNudgesEnabled: boolean;

@@ -29,8 +29,10 @@ type ProfileTabProps = {
   cycleContext: CycleContext;
   cycleLength: number;
   dateLocale: string;
+  dailyReminderHour: number;
   draftProfileAvatarIcon: ProfileAvatarIcon;
   draftProfileName: string;
+  fertilityRemindersEnabled: boolean;
   goals: GoalOption[];
   hasProAccess: boolean;
   healthSyncEnabled: boolean;
@@ -55,17 +57,21 @@ type ProfileTabProps = {
   onSaveProfileName: () => void;
   onSetActiveTab: (tab: HomeTab) => void;
   onSetCycleLength: (value: number) => void;
+  onSetDailyReminderHour: (value: number) => void;
   onSetDebugProOverrideEnabled: (enabled: boolean) => void;
   onSetDraftProfileAvatarIcon: (icon: ProfileAvatarIcon) => void;
   onSetDraftProfileName: (name: string) => void;
   onSetHealthSyncEnabled: (enabled: boolean) => void;
+  onSetFertilityRemindersEnabled: (enabled: boolean) => void;
   onSetInsightNudgesEnabled: (enabled: boolean) => void;
   onSetLanguagePickerVisible: (visible: boolean) => void;
   onSetPinLockEnabled: (enabled: boolean) => void;
   onSetProfileView: (view: ProfileView) => void;
+  onSetOvulationRemindersEnabled: (enabled: boolean) => void;
   onSetPeriodLength: (value: number) => void;
   onSetRemindersEnabled: (enabled: boolean) => void;
   onSetSubscriptionModalVisible: (visible: boolean) => void;
+  ovulationRemindersEnabled: boolean;
   periodLength: number;
   pinLockEnabled: boolean;
   profileView: ProfileView;
@@ -235,8 +241,10 @@ export function ProfileTab({
   cycleContext,
   cycleLength,
   dateLocale,
+  dailyReminderHour,
   draftProfileAvatarIcon,
   draftProfileName,
+  fertilityRemindersEnabled,
   goals,
   hasProAccess,
   healthSyncEnabled,
@@ -261,17 +269,21 @@ export function ProfileTab({
   onSaveProfileName,
   onSetActiveTab,
   onSetCycleLength,
+  onSetDailyReminderHour,
   onSetDebugProOverrideEnabled,
   onSetDraftProfileAvatarIcon,
   onSetDraftProfileName,
+  onSetFertilityRemindersEnabled,
   onSetHealthSyncEnabled,
   onSetInsightNudgesEnabled,
   onSetLanguagePickerVisible,
+  onSetOvulationRemindersEnabled,
   onSetPinLockEnabled,
   onSetProfileView,
   onSetPeriodLength,
   onSetRemindersEnabled,
   onSetSubscriptionModalVisible,
+  ovulationRemindersEnabled,
   periodLength,
   pinLockEnabled,
   profileView,
@@ -455,11 +467,33 @@ export function ProfileTab({
               isFirst
             />
             <ToggleRow
+              icon="leaf-outline"
+              title={t("settings.fertilitySupportReminders")}
+              subtitle={t("settings.fertilitySupportRemindersDesc")}
+              value={fertilityRemindersEnabled}
+              onValueChange={onSetFertilityRemindersEnabled}
+            />
+            <ToggleRow
+              icon="sparkles-outline"
+              title={t("settings.ovulationSupportReminders")}
+              subtitle={t("settings.ovulationSupportRemindersDesc")}
+              value={ovulationRemindersEnabled}
+              onValueChange={onSetOvulationRemindersEnabled}
+            />
+            <ToggleRow
               icon="bulb-outline"
               title={t("settings.insightNudges")}
               subtitle={t("settings.insightNudgesDesc")}
               value={insightNudgesEnabled}
               onValueChange={onSetInsightNudgesEnabled}
+            />
+            <NumberAdjuster
+              label={t("settings.reminderTime", { hour: `${String(dailyReminderHour).padStart(2, "0")}:00` })}
+              hint={t("settings.reminderTimeDesc")}
+              value={dailyReminderHour}
+              min={6}
+              max={22}
+              onChange={onSetDailyReminderHour}
             />
           </View>
 
