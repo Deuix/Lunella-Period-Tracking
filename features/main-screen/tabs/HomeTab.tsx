@@ -2,7 +2,8 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { WEEK_DAY_KEYS } from "../constants";
-import { styles } from "../styles";
+import { useMainScreenStyles } from "../styles";
+import { pickThemeValue, useMainScreenTheme } from "../theme";
 import { isSameDay, startOfDay } from "../utils";
 import type { DecoratedCalendarDay, ProfileAvatarIcon } from "../types";
 
@@ -53,6 +54,9 @@ export function HomeTab({
   selectedMonthIndex,
   t,
 }: HomeTabProps) {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
+
   return (
     <ScrollView contentContainerStyle={styles.tabScrollContent} showsVerticalScrollIndicator={false}>
       <View style={styles.homeHeader}>
@@ -162,15 +166,30 @@ export function HomeTab({
 
         <View style={styles.legendRow}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#D8C3F9" }]} />
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: pickThemeValue(resolvedTheme, "#D8C3F9", "#9A77C8") },
+              ]}
+            />
             <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#BFDDFE" }]} />
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: pickThemeValue(resolvedTheme, "#BFDDFE", "#6A8FC2") },
+              ]}
+            />
             <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: "#CDEFD9" }]} />
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: pickThemeValue(resolvedTheme, "#CDEFD9", "#6CA184") },
+              ]}
+            />
             <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
           </View>
         </View>

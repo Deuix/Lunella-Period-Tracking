@@ -2,6 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -16,6 +17,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useColorScheme,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -27,12 +29,17 @@ import {
   NumberAdjuster,
   WelcomeIllustration,
 } from "../features/main-screen/shared-components";
-import { styles } from "../features/main-screen/styles";
+import { getMainScreenStyles } from "../features/main-screen/styles";
 import { AiTab } from "../features/main-screen/tabs/AiTab";
 import { HomeTab as HomeTabContent } from "../features/main-screen/tabs/HomeTab";
 import { InsightsTab } from "../features/main-screen/tabs/InsightsTab";
 import { ProfileTab } from "../features/main-screen/tabs/ProfileTab";
 import { TipsTab } from "../features/main-screen/tabs/TipsTab";
+import {
+  MainScreenThemeProvider,
+  pickThemeValue,
+  resolveThemePreference,
+} from "../features/main-screen/theme";
 import {
   APP_STATE_STORAGE_KEY,
   BREATHING_STEPS,
@@ -72,14 +79,17 @@ import type {
   ProfileView,
   ProUpsellSource,
   SymptomLogEntry,
+  ThemePreference,
 } from "../features/main-screen/types";
 import type { RevenueCatPlanId } from "../services/revenuecat";
 
 export default function Index() {
   const { t, i18n } = useTranslation();
   const dateLocale = getDateLocale(i18n.language as SupportedLanguage);
+  const systemColorScheme = useColorScheme();
 
   const [isHydrated, setIsHydrated] = useState(false);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [step, setStep] = useState(0);
   const [stepDirection, setStepDirection] = useState<1 | -1>(1);
   const [isOnboardingDone, setIsOnboardingDone] = useState(false);
@@ -115,6 +125,24 @@ export default function Index() {
   const [checkInHistoryVisible, setCheckInHistoryVisible] = useState(false);
   const [selectedHistoryEntryId, setSelectedHistoryEntryId] = useState<string | null>(null);
   const hasProAccess = isPro || (__DEV__ && isDebugProOverrideEnabled);
+
+  const resolvedTheme = useMemo(
+    () => resolveThemePreference(themePreference, systemColorScheme),
+    [systemColorScheme, themePreference],
+  );
+  const styles = useMemo(() => getMainScreenStyles(resolvedTheme), [resolvedTheme]);
+  const themedColor = useCallback(
+    (lightColor: string, darkColor: string) => pickThemeValue(resolvedTheme, lightColor, darkColor),
+    [resolvedTheme],
+  );
+  const themeContextValue = useMemo(
+    () => ({
+      themePreference,
+      resolvedTheme,
+      setThemePreference,
+    }),
+    [resolvedTheme, themePreference],
+  );
 
   const monthOptions = useMemo(() => {
     const base = startOfMonth(new Date());
@@ -186,6 +214,14 @@ export default function Index() {
 
         if (typeof storedState.isOnboardingDone === "boolean") {
           setIsOnboardingDone(storedState.isOnboardingDone);
+        }
+        if (
+          typeof storedState.themePreference === "string"
+          && (storedState.themePreference === "system"
+            || storedState.themePreference === "light"
+            || storedState.themePreference === "dark")
+        ) {
+          setThemePreference(storedState.themePreference);
         }
         if (typeof storedState.isPro === "boolean") {
           setIsPro(storedState.isPro);
@@ -447,6 +483,7 @@ export default function Index() {
 
     const persistedState: PersistedAppState = {
       isOnboardingDone,
+      themePreference,
       name,
       profileAvatarIcon,
       goals,
@@ -487,6 +524,7 @@ export default function Index() {
     selectedFlow,
     selectedMoods,
     symptomLogs,
+    themePreference,
   ]);
 
   const activeMonth = monthOptions[selectedMonthIndex] ?? monthOptions[2];
@@ -658,6 +696,7 @@ export default function Index() {
               await AsyncStorage.removeItem(APP_STATE_STORAGE_KEY);
 
               setIsOnboardingDone(false);
+              setThemePreference("system");
               setStep(0);
               setName("");
               setProfileAvatarIcon(DEFAULT_PROFILE_AVATAR_ICON);
@@ -797,9 +836,9 @@ export default function Index() {
         ? t("home.logSymptomsFlow")
         : t("home.nextDate", { date: cycleContext.nextPeriodStart.toLocaleDateString(dateLocale, { month: "short", day: "numeric" }) }),
       icon: "water",
-      bgColor: "#FFF0F3",
-      accentColor: "#D4587A",
-      iconBgColor: "#FDDDE5",
+      bgColor: themedColor("#FFF0F3", "#4D2834"),
+      accentColor: themedColor("#D4587A", "#ED7BA0"),
+      iconBgColor: themedColor("#FDDDE5", "#684050"),
     },
     {
       heroValue: cycleContext.daysUntilOvulation === 0
@@ -808,9 +847,9 @@ export default function Index() {
       heroLabel: cycleContext.daysUntilOvulation === 0 ? t("home.isOvulationDay") : t("home.daysToOvulation"),
       subtitle: t("home.expectedDate", { date: cycleContext.nextOvulationDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric" }) }),
       icon: "egg",
-      bgColor: "#EEF4FF",
-      accentColor: "#5B7FC2",
-      iconBgColor: "#DCE8FD",
+      bgColor: themedColor("#EEF4FF", "#29384C"),
+      accentColor: themedColor("#5B7FC2", "#8CB2F4"),
+      iconBgColor: themedColor("#DCE8FD", "#3B4D66"),
     },
     {
       heroValue: cycleContext.isFertilityWindow
@@ -819,9 +858,9 @@ export default function Index() {
       heroLabel: cycleContext.isFertilityWindow ? t("home.fertileDaysLeft") : t("home.daysToFertileWindow"),
       subtitle: `${cycleContext.fertilityStartDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric" })} - ${cycleContext.fertilityEndDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric" })}`,
       icon: "leaf",
-      bgColor: "#EEFBF3",
-      accentColor: "#4A9D6E",
-      iconBgColor: "#D5F2E1",
+      bgColor: themedColor("#EEFBF3", "#274838"),
+      accentColor: themedColor("#4A9D6E", "#73C59B"),
+      iconBgColor: themedColor("#D5F2E1", "#345947"),
     },
   ];
 
@@ -1151,7 +1190,7 @@ export default function Index() {
             value={name}
             onChangeText={setName}
             placeholder={t("onboarding.namePlaceholder")}
-            placeholderTextColor="#9F95A4"
+            placeholderTextColor={themedColor("#9F95A4", "#9F95A4")}
           />
         </View>
       );
@@ -1275,7 +1314,10 @@ export default function Index() {
           <Switch
             value={remindersEnabled}
             onValueChange={setRemindersEnabled}
-            trackColor={{ false: "#D2C4DA", true: "#AB8FD9" }}
+            trackColor={{
+              false: themedColor("#D2C4DA", "#4D435A"),
+              true: themedColor("#AB8FD9", "#7C67B0"),
+            }}
             thumbColor="#FFFFFF"
           />
         </View>
@@ -1338,7 +1380,11 @@ export default function Index() {
         <TouchableOpacity
           style={styles.setAsPeriodButton}
           onPress={() => handleSetAsPeriodStart(selectedCalendarDate)}>
-          <MaterialCommunityIcons name="calendar-edit" size={18} color="#8F72C5" />
+          <MaterialCommunityIcons
+            name="calendar-edit"
+            size={18}
+            color={themedColor("#8F72C5", "#C8B2F8")}
+          />
           <Text style={styles.setAsPeriodButtonText}>{t("home.setAsPeriodStart")}</Text>
         </TouchableOpacity>
 
@@ -1481,6 +1527,8 @@ export default function Index() {
         profileView={profileView}
         remindersEnabled={remindersEnabled}
         revenueCatPackages={revenueCatPackages}
+        themePreference={themePreference}
+        onSetThemePreference={setThemePreference}
         showProUpsell={showProUpsell}
         t={t}
       />
@@ -1489,59 +1537,67 @@ export default function Index() {
 
   if (!isHydrated) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <DecorativeBackground />
-        <View style={styles.hydrationWrap}>
-          <Text style={styles.hydrationText}>{t("common.loading")}</Text>
-        </View>
-      </SafeAreaView>
+      <MainScreenThemeProvider value={themeContextValue}>
+        <StatusBar style={resolvedTheme === "dark" ? "light" : "dark"} />
+        <SafeAreaView style={styles.safeArea}>
+          <DecorativeBackground />
+          <View style={styles.hydrationWrap}>
+            <Text style={styles.hydrationText}>{t("common.loading")}</Text>
+          </View>
+        </SafeAreaView>
+      </MainScreenThemeProvider>
     );
   }
 
   if (!isOnboardingDone) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <DecorativeBackground />
+      <MainScreenThemeProvider value={themeContextValue}>
+        <StatusBar style={resolvedTheme === "dark" ? "light" : "dark"} />
+        <SafeAreaView style={styles.safeArea}>
+          <DecorativeBackground />
 
-        <View style={styles.onboardingWrapper}>
-          {step > 0 && <Text style={styles.progressText}>{t("onboarding.stepProgress", { current: step + 1, total: 5 })}</Text>}
+          <View style={styles.onboardingWrapper}>
+            {step > 0 && <Text style={styles.progressText}>{t("onboarding.stepProgress", { current: step + 1, total: 5 })}</Text>}
 
-          <Animated.View
-            style={[
-              onboardingAnimatedStyle,
-              step === 0 ? styles.onboardingStageWelcome : styles.onboardingStageCard,
-            ]}>
-            {step === 0 ? renderOnboardingBody() : <View style={styles.card}>{renderOnboardingBody()}</View>}
-          </Animated.View>
-
-          <View style={[styles.footerButtons, step === 0 && styles.footerButtonsSingle]}>
-            {step > 0 && (
-              <TouchableOpacity style={styles.secondaryButton} onPress={onBack}>
-                <Text style={styles.secondaryButtonText}>{t("onboarding.back")}</Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
+            <Animated.View
               style={[
-                styles.primaryButton,
-                !canContinue && styles.primaryButtonDisabled,
-                step === 0 && styles.primaryButtonFull,
-              ]}
-              onPress={onNext}
-              disabled={!canContinue}>
-              <Text style={styles.primaryButtonText}>{stepButtonLabel}</Text>
-            </TouchableOpacity>
+                onboardingAnimatedStyle,
+                step === 0 ? styles.onboardingStageWelcome : styles.onboardingStageCard,
+              ]}>
+              {step === 0 ? renderOnboardingBody() : <View style={styles.card}>{renderOnboardingBody()}</View>}
+            </Animated.View>
+
+            <View style={[styles.footerButtons, step === 0 && styles.footerButtonsSingle]}>
+              {step > 0 && (
+                <TouchableOpacity style={styles.secondaryButton} onPress={onBack}>
+                  <Text style={styles.secondaryButtonText}>{t("onboarding.back")}</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  !canContinue && styles.primaryButtonDisabled,
+                  step === 0 && styles.primaryButtonFull,
+                ]}
+                onPress={onNext}
+                disabled={!canContinue}>
+                <Text style={styles.primaryButtonText}>{stepButtonLabel}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </MainScreenThemeProvider>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <DecorativeBackground />
-      <View style={styles.postOnboardingWrapper}>
-        <View style={styles.tabContent}>{renderTabContent()}</View>
+    <MainScreenThemeProvider value={themeContextValue}>
+      <StatusBar style={resolvedTheme === "dark" ? "light" : "dark"} />
+      <SafeAreaView style={styles.safeArea}>
+        <DecorativeBackground />
+        <View style={styles.postOnboardingWrapper}>
+          <View style={styles.tabContent}>{renderTabContent()}</View>
 
         <View style={styles.bottomNavBar}>
           {NAV_ITEMS.map((item) => {
@@ -1552,7 +1608,11 @@ export default function Index() {
                 style={styles.navItem}
                 onPress={() => setActiveTab(item.key)}>
                 <View style={[styles.navIconWrap, isActive && styles.navIconWrapActive]}>
-                  <Ionicons name={item.icon} size={19} color={isActive ? "#FFFFFF" : "#6E6074"} />
+                  <Ionicons
+                    name={item.icon}
+                    size={19}
+                    color={isActive ? "#FFFFFF" : themedColor("#6E6074", "#A79DB2")}
+                  />
                 </View>
                 <Text style={[styles.navText, isActive && styles.navTextActive]}>{t(item.labelKey)}</Text>
               </TouchableOpacity>
@@ -1588,12 +1648,16 @@ export default function Index() {
         <Pressable style={styles.historyModalOverlay} onPress={() => setCheckInHistoryVisible(false)}>
           <Pressable style={styles.historyModalContent} onPress={() => null}>
             <LinearGradient
-              colors={["#F8F4FF", "#FFFFFF"]}
+              colors={pickThemeValue(resolvedTheme, ["#F8F4FF", "#FFFFFF"], ["#2A2236", "#1B1827"])}
               style={styles.historyModalGradient}>
               <View style={styles.historyModalHeader}>
                 <View style={styles.historyModalHeaderLeft}>
                   <View style={styles.historyModalIconContainer}>
-                    <MaterialCommunityIcons name="calendar-clock" size={22} color="#8F72C5" />
+                    <MaterialCommunityIcons
+                      name="calendar-clock"
+                      size={22}
+                      color={themedColor("#8F72C5", "#C8B2F8")}
+                    />
                   </View>
                   <View>
                     <Text style={styles.historyModalTitle}>{t("tips.checkInHistory")}</Text>
@@ -1607,7 +1671,7 @@ export default function Index() {
                 <TouchableOpacity
                   style={styles.historyModalCloseButton}
                   onPress={() => setCheckInHistoryVisible(false)}>
-                  <Ionicons name="close" size={24} color="#6E6074" />
+                  <Ionicons name="close" size={24} color={themedColor("#6E6074", "#C2B8CD")} />
                 </TouchableOpacity>
               </View>
 
@@ -1618,9 +1682,13 @@ export default function Index() {
                 {symptomLogs.length === 0 ? (
                   <View style={styles.emptyHistoryContainer}>
                     <LinearGradient
-                      colors={["#F0E8FA", "#E9DFFF"]}
+                      colors={pickThemeValue(resolvedTheme, ["#F0E8FA", "#E9DFFF"], ["#3D3050", "#322946"])}
                       style={styles.emptyHistoryIconContainer}>
-                      <MaterialCommunityIcons name="calendar-blank-outline" size={72} color="#8F72C5" />
+                      <MaterialCommunityIcons
+                        name="calendar-blank-outline"
+                        size={72}
+                        color={themedColor("#8F72C5", "#C8B2F8")}
+                      />
                     </LinearGradient>
                     <Text style={styles.emptyHistoryTitle}>{t("history.emptyTitle")}</Text>
                     <Text style={styles.emptyHistoryText}>{t("history.emptyMessage")}</Text>
@@ -1675,7 +1743,13 @@ export default function Index() {
                                   {hiddenMoodCount > 0 ? ` +${hiddenMoodCount}` : ""}
                                 </Text>
                               )}
-                              {isSelected && <Ionicons name="chevron-forward" size={16} color="#8F72C5" />}
+                              {isSelected && (
+                                <Ionicons
+                                  name="chevron-forward"
+                                  size={16}
+                                  color={themedColor("#8F72C5", "#C8B2F8")}
+                                />
+                              )}
                             </View>
                           </Pressable>
                         );
@@ -1692,10 +1766,10 @@ export default function Index() {
                               <LinearGradient
                                 colors={
                                   isSelectedHistoryEntryToday
-                                    ? ["#8F72C5", "#A788D9"]
+                                    ? pickThemeValue(resolvedTheme, ["#8F72C5", "#A788D9"], ["#8F72C5", "#A788D9"])
                                     : isSelectedHistoryEntryYesterday
-                                      ? ["#B8A8E0", "#D4C2F0"]
-                                      : ["#E9DFFF", "#F5E6FF"]
+                                      ? pickThemeValue(resolvedTheme, ["#B8A8E0", "#D4C2F0"], ["#6E5A95", "#5A4A7A"])
+                                      : pickThemeValue(resolvedTheme, ["#E9DFFF", "#F5E6FF"], ["#4B3D66", "#3D3254"])
                                 }
                                 style={[
                                   styles.historyDateBadge,
@@ -1736,20 +1810,32 @@ export default function Index() {
                                   ],
                                 );
                               }}>
-                              <Ionicons name="trash-outline" size={18} color="#E57373" />
+                              <Ionicons
+                                name="trash-outline"
+                                size={18}
+                                color={themedColor("#E57373", "#EF9090")}
+                              />
                             </TouchableOpacity>
                           </View>
 
                           <View style={styles.historyCardBody}>
                             <View style={styles.historyFlowRow}>
                               <View style={styles.historyFlowIconContainer}>
-                                <MaterialCommunityIcons name="water" size={16} color="#8F72C5" />
+                                <MaterialCommunityIcons
+                                  name="water"
+                                  size={16}
+                                  color={themedColor("#8F72C5", "#C8B2F8")}
+                                />
                                 <Text style={styles.historyFlowLabel}>{t("tips.menstrualFlow")}</Text>
                               </View>
                               <View style={styles.historyFlowValueContainer}>
                                 {Array.from({ length: selectedHistoryFlowOption?.drops || 1 }).map((_, dropIndex) => (
                                   <View key={dropIndex} style={styles.historyFlowDrop}>
-                                    <MaterialCommunityIcons name="water" size={12} color="#8F72C5" />
+                                    <MaterialCommunityIcons
+                                      name="water"
+                                      size={12}
+                                      color={themedColor("#8F72C5", "#C8B2F8")}
+                                    />
                                   </View>
                                 ))}
                                 <Text style={styles.historyFlowText}>
@@ -1761,7 +1847,11 @@ export default function Index() {
                             {selectedHistoryEntry.moods.length > 0 && (
                               <View style={styles.historyMoodsContainer}>
                                 <View style={styles.historyMoodsHeader}>
-                                  <MaterialCommunityIcons name="emoticon-happy-outline" size={16} color="#8F72C5" />
+                                  <MaterialCommunityIcons
+                                    name="emoticon-happy-outline"
+                                    size={16}
+                                    color={themedColor("#8F72C5", "#C8B2F8")}
+                                  />
                                   <Text style={styles.historyMoodsLabel}>{t("tips.moods")}</Text>
                                 </View>
                                 <View style={styles.historyMoodsGrid}>
@@ -1795,5 +1885,6 @@ export default function Index() {
         </Pressable>
       </Modal>
     </SafeAreaView>
+    </MainScreenThemeProvider>
   );
 }

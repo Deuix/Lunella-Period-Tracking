@@ -15,7 +15,12 @@ import { persistLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "..
 import type { RevenueCatPackagesMap, RevenueCatPlanId } from "../../../services/revenuecat";
 import { GOAL_OPTIONS, PROFILE_AVATAR_OPTIONS } from "../constants";
 import { NumberAdjuster } from "../shared-components";
-import { styles } from "../styles";
+import { useMainScreenStyles } from "../styles";
+import {
+  pickThemeValue,
+  useMainScreenTheme,
+  type ThemePreference,
+} from "../theme";
 import type { CycleContext, GoalOption, HomeTab, ProfileAvatarIcon, ProfileView } from "../types";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
@@ -66,6 +71,8 @@ type ProfileTabProps = {
   profileView: ProfileView;
   remindersEnabled: boolean;
   revenueCatPackages: RevenueCatPackagesMap;
+  themePreference: ThemePreference;
+  onSetThemePreference: (nextPreference: ThemePreference) => void;
   showProUpsell: (source: "health_sync" | "passcode") => void;
   t: TranslationFn;
 };
@@ -75,22 +82,31 @@ const QuickActionButton = ({
   icon,
   label,
   onPress,
-  color = "#8F72C5",
-  bgColor = "#F5EEFB",
+  color,
+  bgColor,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
   color?: string;
   bgColor?: string;
-}) => (
-  <TouchableOpacity style={styles.quickActionButton} onPress={onPress}>
-    <View style={[styles.quickActionIcon, { backgroundColor: bgColor }]}>
-      <Ionicons name={icon} size={20} color={color} />
-    </View>
-    <Text style={styles.quickActionLabel}>{label}</Text>
-  </TouchableOpacity>
-);
+}) => {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
+
+  return (
+    <TouchableOpacity style={styles.quickActionButton} onPress={onPress}>
+      <View
+        style={[
+          styles.quickActionIcon,
+          { backgroundColor: bgColor ?? pickThemeValue(resolvedTheme, "#F5EEFB", "#3D304F") },
+        ]}>
+        <Ionicons name={icon} size={20} color={color ?? pickThemeValue(resolvedTheme, "#8F72C5", "#C9B4F6")} />
+      </View>
+      <Text style={styles.quickActionLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
 
 // Stat Card Component
 const StatCard = ({
@@ -105,15 +121,18 @@ const StatCard = ({
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   bgColor: string;
-}) => (
-  <View style={styles.newProfileStatCard}>
-    <View style={[styles.newProfileStatIcon, { backgroundColor: bgColor }]}>
-      <Ionicons name={icon} size={18} color={color} />
+}) => {
+  const styles = useMainScreenStyles();
+  return (
+    <View style={styles.newProfileStatCard}>
+      <View style={[styles.newProfileStatIcon, { backgroundColor: bgColor }]}>
+        <Ionicons name={icon} size={18} color={color} />
+      </View>
+      <Text style={styles.newProfileStatValue}>{value}</Text>
+      <Text style={styles.newProfileStatLabel}>{label}</Text>
     </View>
-    <Text style={styles.newProfileStatValue}>{value}</Text>
-    <Text style={styles.newProfileStatLabel}>{label}</Text>
-  </View>
-);
+  );
+};
 
 // Settings Row Component
 const SettingsRow = ({
@@ -132,22 +151,31 @@ const SettingsRow = ({
   rightComponent?: React.ReactNode;
   showArrow?: boolean;
   isFirst?: boolean;
-}) => (
-  <TouchableOpacity
-    style={[styles.newSettingsRow, !isFirst && styles.newSettingsRowNotFirst]}
-    onPress={onPress}>
-    <View style={styles.newSettingsRowLeft}>
-      <View style={styles.newSettingsIcon}>
-        <Ionicons name={icon} size={20} color="#8F72C5" />
+}) => {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
+
+  return (
+    <TouchableOpacity
+      style={[styles.newSettingsRow, !isFirst && styles.newSettingsRowNotFirst]}
+      onPress={onPress}>
+      <View style={styles.newSettingsRowLeft}>
+        <View style={styles.newSettingsIcon}>
+          <Ionicons name={icon} size={20} color={pickThemeValue(resolvedTheme, "#8F72C5", "#C5ADFA")} />
+        </View>
+        <View style={styles.newSettingsTextWrap}>
+          <Text style={styles.newSettingsTitle}>{title}</Text>
+          {subtitle && <Text style={styles.newSettingsSubtitle}>{subtitle}</Text>}
+        </View>
       </View>
-      <View style={styles.newSettingsTextWrap}>
-        <Text style={styles.newSettingsTitle}>{title}</Text>
-        {subtitle && <Text style={styles.newSettingsSubtitle}>{subtitle}</Text>}
-      </View>
-    </View>
-    {rightComponent || (showArrow && <Ionicons name="chevron-forward" size={18} color="#C5B8D0" />)}
-  </TouchableOpacity>
-);
+      {rightComponent || (
+        showArrow && (
+          <Ionicons name="chevron-forward" size={18} color={pickThemeValue(resolvedTheme, "#C5B8D0", "#8A8092")} />
+        )
+      )}
+    </TouchableOpacity>
+  );
+};
 
 // Toggle Row Component
 const ToggleRow = ({
@@ -166,34 +194,42 @@ const ToggleRow = ({
   onValueChange: (val: boolean) => void;
   isPro?: boolean;
   isFirst?: boolean;
-}) => (
-  <View style={[styles.newSettingsRow, !isFirst && styles.newSettingsRowNotFirst]}>
-    <View style={styles.newSettingsRowLeft}>
-      <View style={styles.newSettingsIcon}>
-        <Ionicons name={icon} size={20} color="#8F72C5" />
-      </View>
-      <View style={styles.newSettingsTextWrap}>
-        <Text style={styles.newSettingsTitle}>{title}</Text>
-        {subtitle && <Text style={styles.newSettingsSubtitle}>{subtitle}</Text>}
-      </View>
-    </View>
-    <View style={styles.newToggleRowRight}>
-      {isPro && !value && (
-        <View style={styles.newProBadge}>
-          <Ionicons name="diamond" size={10} color="#B4861D" />
-          <Text style={styles.newProBadgeText}>PRO</Text>
+}) => {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
+
+  return (
+    <View style={[styles.newSettingsRow, !isFirst && styles.newSettingsRowNotFirst]}>
+      <View style={styles.newSettingsRowLeft}>
+        <View style={styles.newSettingsIcon}>
+          <Ionicons name={icon} size={20} color={pickThemeValue(resolvedTheme, "#8F72C5", "#C5ADFA")} />
         </View>
-      )}
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: "#E8DCF0", true: "#D4C0F8" }}
-        thumbColor={value ? "#8F72C5" : "#FFFFFF"}
-        ios_backgroundColor="#E8DCF0"
-      />
+        <View style={styles.newSettingsTextWrap}>
+          <Text style={styles.newSettingsTitle}>{title}</Text>
+          {subtitle && <Text style={styles.newSettingsSubtitle}>{subtitle}</Text>}
+        </View>
+      </View>
+      <View style={styles.newToggleRowRight}>
+        {isPro && !value && (
+          <View style={styles.newProBadge}>
+            <Ionicons name="diamond" size={10} color={pickThemeValue(resolvedTheme, "#B4861D", "#E1C26D")} />
+            <Text style={styles.newProBadgeText}>PRO</Text>
+          </View>
+        )}
+        <Switch
+          value={value}
+          onValueChange={onValueChange}
+          trackColor={{
+            false: pickThemeValue(resolvedTheme, "#E8DCF0", "#4D435C"),
+            true: pickThemeValue(resolvedTheme, "#D4C0F8", "#6D56A8"),
+          }}
+          thumbColor={value ? pickThemeValue(resolvedTheme, "#8F72C5", "#D5C2FB") : "#FFFFFF"}
+          ios_backgroundColor={pickThemeValue(resolvedTheme, "#E8DCF0", "#4D435C")}
+        />
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 export function ProfileTab({
   cycleContext,
@@ -241,9 +277,13 @@ export function ProfileTab({
   profileView,
   remindersEnabled,
   revenueCatPackages,
+  themePreference,
+  onSetThemePreference,
   showProUpsell,
   t,
 }: ProfileTabProps) {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
   const profileName = name.trim() || "Gul";
   const profileGoals =
     goals.length > 0
@@ -259,6 +299,11 @@ export function ProfileTab({
     { id: "monthly", label: t("pro.planMonthly") },
     { id: "yearly", label: t("pro.planYearly") },
     { id: "lifetime", label: t("pro.planLifetime") },
+  ];
+  const themeOptions: { key: ThemePreference; label: string }[] = [
+    { key: "system", label: t("settings.themeSystem") },
+    { key: "light", label: t("settings.themeLight") },
+    { key: "dark", label: t("settings.themeDark") },
   ];
 
   const openTermsAndConditions = () => {
@@ -284,7 +329,11 @@ export function ProfileTab({
       <View style={styles.newProfileContainer}>
         <View style={styles.newProfileHeader}>
           <TouchableOpacity style={styles.newProfileBackButton} onPress={onCloseEditProfile}>
-            <Ionicons name="arrow-back" size={24} color="#2F2436" />
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={pickThemeValue(resolvedTheme, "#2F2436", "#E3DCEC")}
+            />
           </TouchableOpacity>
           <Text style={styles.newProfileHeaderTitle}>{t("profile.editProfileTitle")}</Text>
           <View style={{ width: 24 }} />
@@ -316,7 +365,9 @@ export function ProfileTab({
                   <Ionicons
                     name={avatarIcon}
                     size={24}
-                    color={isSelected ? "#8F72C5" : "#7A6D82"}
+                    color={isSelected
+                      ? pickThemeValue(resolvedTheme, "#8F72C5", "#C8B2F8")
+                      : pickThemeValue(resolvedTheme, "#7A6D82", "#A89DB2")}
                   />
                 </TouchableOpacity>
               );
@@ -332,7 +383,7 @@ export function ProfileTab({
               value={draftProfileName}
               onChangeText={onSetDraftProfileName}
               placeholder={t("profile.namePlaceholder")}
-              placeholderTextColor="#B5A8BC"
+              placeholderTextColor={pickThemeValue(resolvedTheme, "#B5A8BC", "#8A8094")}
               maxLength={40}
               autoCapitalize="words"
               returnKeyType="done"
@@ -360,7 +411,11 @@ export function ProfileTab({
       <View style={styles.newProfileContainer}>
         <View style={styles.newProfileHeader}>
           <TouchableOpacity style={styles.newProfileBackButton} onPress={() => onSetProfileView("main")}>
-            <Ionicons name="arrow-back" size={24} color="#2F2436" />
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={pickThemeValue(resolvedTheme, "#2F2436", "#E3DCEC")}
+            />
           </TouchableOpacity>
           <Text style={styles.newProfileHeaderTitle}>{t("settings.title")}</Text>
           <View style={{ width: 24 }} />
@@ -468,6 +523,44 @@ export function ProfileTab({
           {/* General Section */}
           <Text style={styles.newSettingsSectionTitle}>{t("settings.general")}</Text>
           <View style={styles.newSettingsCard}>
+            <View style={styles.newThemePickerRow}>
+              <View style={styles.newThemePickerHeader}>
+                <View style={styles.newThemePickerIcon}>
+                  <Ionicons
+                    name="color-palette-outline"
+                    size={20}
+                    color={pickThemeValue(resolvedTheme, "#8F72C5", "#C5ADFA")}
+                  />
+                </View>
+                <View style={styles.newThemePickerTextWrap}>
+                  <Text style={styles.newSettingsTitle}>{t("settings.themeMode")}</Text>
+                  <Text style={styles.newSettingsSubtitle}>{t("settings.themeModeDesc")}</Text>
+                </View>
+              </View>
+
+              <View style={styles.newThemeOptionsRow}>
+                {themeOptions.map((option) => {
+                  const isActive = themePreference === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[
+                        styles.newThemeOptionButton,
+                        isActive && styles.newThemeOptionButtonActive,
+                      ]}
+                      onPress={() => onSetThemePreference(option.key)}>
+                      <Text
+                        style={[
+                          styles.newThemeOptionText,
+                          isActive && styles.newThemeOptionTextActive,
+                        ]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
             <SettingsRow
               icon="globe-outline"
               title={t("settings.language")}
@@ -477,7 +570,6 @@ export function ProfileTab({
                   {SUPPORTED_LANGUAGES[i18n.language] ?? "English"}
                 </Text>
               }
-              isFirst
             />
             <SettingsRow
               icon="card-outline"
@@ -583,7 +675,11 @@ export function ProfileTab({
                 <TouchableOpacity
                   style={styles.newSubscriptionCloseButton}
                   onPress={() => onSetSubscriptionModalVisible(false)}>
-                  <Ionicons name="close" size={24} color="#5E5265" />
+                  <Ionicons
+                    name="close"
+                    size={24}
+                    color={pickThemeValue(resolvedTheme, "#5E5265", "#D0C6DA")}
+                  />
                 </TouchableOpacity>
               </View>
 
@@ -591,7 +687,9 @@ export function ProfileTab({
                 <Ionicons
                   name={hasProAccess ? "diamond" : "ellipse-outline"}
                   size={32}
-                  color={hasProAccess ? "#F7B84B" : "#C5B8D0"}
+                  color={hasProAccess
+                    ? pickThemeValue(resolvedTheme, "#F7B84B", "#F1C66C")
+                    : pickThemeValue(resolvedTheme, "#C5B8D0", "#92869B")}
                 />
                 <View>
                   <Text style={styles.newSubscriptionStatusTitle}>
@@ -623,7 +721,11 @@ export function ProfileTab({
                         {revenueCatPackage?.product.priceString ?? t("pro.planUnavailable")}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={20} color="#C5B8D0" />
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color={pickThemeValue(resolvedTheme, "#C5B8D0", "#92869B")}
+                    />
                   </TouchableOpacity>
                 );
               })}
@@ -635,7 +737,11 @@ export function ProfileTab({
                   onPress={() => {
                     void onPresentPaywall(false);
                   }}>
-                  <Ionicons name="sparkles" size={18} color="#8F72C5" />
+                  <Ionicons
+                    name="sparkles"
+                    size={18}
+                    color={pickThemeValue(resolvedTheme, "#8F72C5", "#C8B2F8")}
+                  />
                   <Text style={styles.newSubscriptionActionText}>{t("pro.openPaywall")}</Text>
                 </TouchableOpacity>
 
@@ -645,7 +751,11 @@ export function ProfileTab({
                   onPress={() => {
                     void onRestoreSubscription();
                   }}>
-                  <Ionicons name="refresh-outline" size={18} color="#8F72C5" />
+                  <Ionicons
+                    name="refresh-outline"
+                    size={18}
+                    color={pickThemeValue(resolvedTheme, "#8F72C5", "#C8B2F8")}
+                  />
                   <Text style={styles.newSubscriptionActionText}>{t("pro.restorePurchases")}</Text>
                 </TouchableOpacity>
 
@@ -655,7 +765,11 @@ export function ProfileTab({
                   onPress={() => {
                     void onOpenCustomerCenter();
                   }}>
-                  <Ionicons name="person-outline" size={18} color="#8F72C5" />
+                  <Ionicons
+                    name="person-outline"
+                    size={18}
+                    color={pickThemeValue(resolvedTheme, "#8F72C5", "#C8B2F8")}
+                  />
                   <Text style={styles.newSubscriptionActionText}>{t("pro.openCustomerCenter")}</Text>
                 </TouchableOpacity>
               </View>
@@ -689,7 +803,11 @@ export function ProfileTab({
             <TouchableOpacity
               style={styles.newProfileSettingsButton}
               onPress={() => onSetProfileView("settings")}>
-              <Ionicons name="settings-outline" size={22} color="#5E5265" />
+              <Ionicons
+                name="settings-outline"
+                size={22}
+                color={pickThemeValue(resolvedTheme, "#5E5265", "#D0C6DA")}
+              />
             </TouchableOpacity>
           </View>
           <Text style={styles.newProfileName}>{profileName}</Text>
@@ -698,7 +816,9 @@ export function ProfileTab({
             <Ionicons
               name={hasProAccess ? "diamond" : "ellipse-outline"}
               size={12}
-              color={hasProAccess ? "#F7B84B" : "#8F72C5"}
+              color={hasProAccess
+                ? pickThemeValue(resolvedTheme, "#F7B84B", "#F1C66C")
+                : pickThemeValue(resolvedTheme, "#8F72C5", "#C8B2F8")}
             />
             <Text style={styles.newProfilePlanText}>
               {hasProAccess ? t("pro.activePlan") : t("pro.freePlan")}
@@ -709,7 +829,11 @@ export function ProfileTab({
         {/* Cycle Stats Card */}
         <View style={styles.newProfileStatsCard}>
           <View style={styles.newProfileStatsHeader}>
-            <Ionicons name="calendar-outline" size={20} color="#8F72C5" />
+            <Ionicons
+              name="calendar-outline"
+              size={20}
+              color={pickThemeValue(resolvedTheme, "#8F72C5", "#C8B2F8")}
+            />
             <Text style={styles.newProfileStatsTitle}>{t("profile.cycleStats")}</Text>
           </View>
           <View style={styles.newProfileStatsGrid}>
@@ -717,29 +841,29 @@ export function ProfileTab({
               label={t("profile.cycleLength")}
               value={cycleLength}
               icon="repeat-outline"
-              color="#8F72C5"
-              bgColor="#F5EEFB"
+              color={pickThemeValue(resolvedTheme, "#8F72C5", "#C8B2F8")}
+              bgColor={pickThemeValue(resolvedTheme, "#F5EEFB", "#3B3050")}
             />
             <StatCard
               label={t("profile.periodLength")}
               value={periodLength}
               icon="time-outline"
-              color="#E91E63"
-              bgColor="#FDF0F5"
+              color={pickThemeValue(resolvedTheme, "#E91E63", "#F36F9F")}
+              bgColor={pickThemeValue(resolvedTheme, "#FDF0F5", "#4E2937")}
             />
             <StatCard
               label={t("profile.lastLogged")}
               value={lastPeriodDate.toLocaleDateString(dateLocale, { month: "short", day: "numeric" })}
               icon="arrow-back-outline"
-              color="#10B981"
-              bgColor="#EDF8F2"
+              color={pickThemeValue(resolvedTheme, "#10B981", "#66D9B4")}
+              bgColor={pickThemeValue(resolvedTheme, "#EDF8F2", "#254637")}
             />
             <StatCard
               label={t("profile.nextPeriod")}
               value={`${daysUntilNextPeriod}d`}
               icon="calendar-clear-outline"
-              color="#F59E0B"
-              bgColor="#FFF4EB"
+              color={pickThemeValue(resolvedTheme, "#F59E0B", "#F7C76E")}
+              bgColor={pickThemeValue(resolvedTheme, "#FFF4EB", "#503B27")}
             />
           </View>
         </View>

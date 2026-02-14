@@ -2,7 +2,8 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Animated, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { GIRL_TIPS, MENSTRUAL_FLOW_OPTIONS, MOOD_OPTIONS } from "../constants";
-import { styles } from "../styles";
+import { useMainScreenStyles } from "../styles";
+import { pickThemeValue, useMainScreenTheme } from "../theme";
 import { startOfDay } from "../utils";
 import type { BreathPhase, BreathStep, SymptomLogEntry } from "../types";
 
@@ -71,6 +72,8 @@ export function TipsTab({
   symptomLogs,
   t,
 }: TipsTabProps) {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
   const feelingName = name.trim() || "Gul";
   const todayISO = startOfDay(new Date()).toISOString();
   const todayCheckIn = symptomLogs.find((log) => log.dateISO === todayISO);
@@ -110,7 +113,11 @@ export function TipsTab({
       )}
 
       <View style={styles.infoCard}>
-        <LinearGradient colors={["#F8F1FF", "#FFFFFF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.checkInHero}>
+        <LinearGradient
+          colors={pickThemeValue(resolvedTheme, ["#F8F1FF", "#FFFFFF"], ["#2B2238", "#1D1A2A"])}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.checkInHero}>
           <View style={styles.checkInHeroHeader}>
             <View style={styles.checkInHeroCopy}>
               <Text style={styles.checkInHeroTitle}>{t("tips.howDoYouFeel", { name: feelingName })}</Text>
@@ -255,7 +262,9 @@ export function TipsTab({
         </ScrollView>
       </View>
 
-      <LinearGradient colors={["#F8F4FF", "#FFFFFF"]} style={styles.breathingContainer}>
+      <LinearGradient
+        colors={pickThemeValue(resolvedTheme, ["#F8F4FF", "#FFFFFF"], ["#2A2236", "#1B1827"])}
+        style={styles.breathingContainer}>
         <View style={styles.breathingHeader}>
           <View>
             <Text style={styles.breathingTitle}>{t("breathing.meditationTitle")}</Text>
@@ -304,7 +313,9 @@ export function TipsTab({
           </View>
 
           <Animated.View style={[styles.breathingMainCircle, { transform: [{ scale: breathingScale }] }]}>
-            <LinearGradient colors={["#E9DFFF", "#F5F0FF"]} style={styles.breathingCircleGradient}>
+            <LinearGradient
+              colors={pickThemeValue(resolvedTheme, ["#E9DFFF", "#F5F0FF"], ["#4A3D63", "#352C4B"])}
+              style={styles.breathingCircleGradient}>
               <MaterialCommunityIcons
                 name={breathingPhase === "done" ? "check-circle" : "flower"}
                 size={48}

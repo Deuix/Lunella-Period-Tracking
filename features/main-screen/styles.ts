@@ -1,6 +1,22 @@
+import { useMemo } from "react";
 import { StyleSheet } from "react-native";
+import { useMainScreenTheme, type ResolvedTheme } from "./theme";
 
-export const styles = StyleSheet.create({
+const COLOR_STYLE_KEYS = new Set([
+  "backgroundColor",
+  "borderColor",
+  "borderTopColor",
+  "borderBottomColor",
+  "borderLeftColor",
+  "borderRightColor",
+  "color",
+  "overlayColor",
+  "shadowColor",
+  "textDecorationColor",
+  "tintColor",
+]);
+
+const lightStyleDefinitions = {
   safeArea: {
     flex: 1,
     backgroundColor: "#FFF9FC",
@@ -3224,4 +3240,340 @@ export const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#8F72C5",
   },
-});
+  newThemePickerRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  newThemePickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  newThemePickerIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#F5EEFB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  newThemePickerTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  newThemeOptionsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  newThemeOptionButton: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E8DCEC",
+    backgroundColor: "#FAF8FC",
+    paddingVertical: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  newThemeOptionButtonActive: {
+    borderColor: "#8F72C5",
+    backgroundColor: "#8F72C5",
+  },
+  newThemeOptionText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#5E5265",
+  },
+  newThemeOptionTextActive: {
+    color: "#FFFFFF",
+  },
+};
+
+type RgbaColor = {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+};
+
+type HslColor = {
+  h: number;
+  s: number;
+  l: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseHexColor(value: string): RgbaColor | null {
+  const hex = value.trim().replace("#", "");
+
+  if (![3, 4, 6, 8].includes(hex.length)) {
+    return null;
+  }
+
+  const normalized =
+    hex.length <= 4
+      ? hex
+          .split("")
+          .map((char) => `${char}${char}`)
+          .join("")
+      : hex;
+
+  const hasAlpha = normalized.length === 8;
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const a = hasAlpha ? Number.parseInt(normalized.slice(6, 8), 16) / 255 : 1;
+
+  return { r, g, b, a };
+}
+
+function parseRgbColor(value: string): RgbaColor | null {
+  const match = value.match(/rgba?\(([^)]+)\)/i);
+  if (!match) {
+    return null;
+  }
+
+  const parts = match[1]
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length < 3) {
+    return null;
+  }
+
+  const r = Number.parseFloat(parts[0]);
+  const g = Number.parseFloat(parts[1]);
+  const b = Number.parseFloat(parts[2]);
+  const a = parts.length === 4 ? Number.parseFloat(parts[3]) : 1;
+
+  if ([r, g, b, a].some((channel) => Number.isNaN(channel))) {
+    return null;
+  }
+
+  return {
+    r: clamp(Math.round(r), 0, 255),
+    g: clamp(Math.round(g), 0, 255),
+    b: clamp(Math.round(b), 0, 255),
+    a: clamp(a, 0, 1),
+  };
+}
+
+function parseColor(value: string): RgbaColor | null {
+  if (value === "transparent") {
+    return { r: 0, g: 0, b: 0, a: 0 };
+  }
+
+  if (value.startsWith("#")) {
+    return parseHexColor(value);
+  }
+
+  if (value.toLowerCase().startsWith("rgb")) {
+    return parseRgbColor(value);
+  }
+
+  return null;
+}
+
+function rgbToHsl({ r, g, b }: Pick<RgbaColor, "r" | "g" | "b">): HslColor {
+  const rNorm = r / 255;
+  const gNorm = g / 255;
+  const bNorm = b / 255;
+
+  const max = Math.max(rNorm, gNorm, bNorm);
+  const min = Math.min(rNorm, gNorm, bNorm);
+  const delta = max - min;
+
+  let h = 0;
+  if (delta !== 0) {
+    if (max === rNorm) {
+      h = ((gNorm - bNorm) / delta) % 6;
+    } else if (max === gNorm) {
+      h = (bNorm - rNorm) / delta + 2;
+    } else {
+      h = (rNorm - gNorm) / delta + 4;
+    }
+  }
+
+  h = Math.round(h * 60);
+  if (h < 0) {
+    h += 360;
+  }
+
+  const l = (max + min) / 2;
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+
+  return { h, s, l };
+}
+
+function hslToRgb({ h, s, l }: HslColor): Pick<RgbaColor, "r" | "g" | "b"> {
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - chroma / 2;
+
+  let rPrime = 0;
+  let gPrime = 0;
+  let bPrime = 0;
+
+  if (h < 60) {
+    rPrime = chroma;
+    gPrime = x;
+  } else if (h < 120) {
+    rPrime = x;
+    gPrime = chroma;
+  } else if (h < 180) {
+    gPrime = chroma;
+    bPrime = x;
+  } else if (h < 240) {
+    gPrime = x;
+    bPrime = chroma;
+  } else if (h < 300) {
+    rPrime = x;
+    bPrime = chroma;
+  } else {
+    rPrime = chroma;
+    bPrime = x;
+  }
+
+  return {
+    r: Math.round((rPrime + m) * 255),
+    g: Math.round((gPrime + m) * 255),
+    b: Math.round((bPrime + m) * 255),
+  };
+}
+
+function formatColor({ r, g, b, a }: RgbaColor) {
+  if (a === 0) {
+    return "transparent";
+  }
+
+  if (a >= 1) {
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  const alpha = Number.parseFloat(a.toFixed(3));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function isColorStyleKey(styleKey: string) {
+  return COLOR_STYLE_KEYS.has(styleKey);
+}
+
+function transformColorForDarkMode(colorValue: string, styleKey: string): string {
+  const parsedColor = parseColor(colorValue);
+  if (!parsedColor) {
+    return colorValue;
+  }
+
+  if (parsedColor.a === 0) {
+    return colorValue;
+  }
+
+  if (styleKey === "shadowColor") {
+    return formatColor({ r: 0, g: 0, b: 0, a: Math.min(parsedColor.a, 0.85) });
+  }
+
+  const { h, s, l } = rgbToHsl(parsedColor);
+
+  const isBackground = styleKey.toLowerCase().includes("background") || styleKey === "overlayColor";
+  const isBorder = styleKey.toLowerCase().includes("border");
+  const isText = styleKey === "color" || styleKey === "textDecorationColor" || styleKey === "tintColor";
+
+  let nextLightness = l;
+  let nextSaturation = s;
+
+  if (isText) {
+    if (l > 0.92 && s < 0.15) {
+      nextLightness = 0.95;
+      nextSaturation = s;
+    } else if (s > 0.28 && l > 0.2 && l < 0.72) {
+      nextLightness = clamp(l + 0.18, 0.6, 0.86);
+      nextSaturation = clamp(s * 0.86, 0.1, 0.72);
+    } else {
+      nextLightness = clamp(0.9 - l * 0.28, 0.72, 0.94);
+      nextSaturation = clamp(s * 0.7, 0.02, 0.6);
+    }
+  } else if (isBorder) {
+    if (l > 0.84) {
+      nextLightness = 0.3;
+    } else if (l > 0.65) {
+      nextLightness = 0.34;
+    } else if (l > 0.48) {
+      nextLightness = 0.38;
+    } else if (l < 0.22) {
+      nextLightness = 0.44;
+    } else {
+      nextLightness = 0.4;
+    }
+
+    nextSaturation = clamp(s * 0.72, 0.03, 0.55);
+  } else if (isBackground) {
+    const isAccent = s > 0.32 && l > 0.24 && l < 0.78;
+
+    if (isAccent) {
+      nextLightness = clamp(l * 0.84, 0.32, 0.6);
+      nextSaturation = clamp(s * 0.95, 0.18, 0.78);
+    } else if (l > 0.9) {
+      nextLightness = 0.1;
+      nextSaturation = s * 0.5;
+    } else if (l > 0.76) {
+      nextLightness = 0.14;
+      nextSaturation = s * 0.58;
+    } else if (l > 0.62) {
+      nextLightness = 0.18;
+      nextSaturation = s * 0.65;
+    } else if (l > 0.45) {
+      nextLightness = 0.24;
+      nextSaturation = s * 0.72;
+    } else if (l < 0.2) {
+      nextLightness = 0.3;
+      nextSaturation = clamp(s * 0.84, 0.04, 0.62);
+    } else {
+      nextLightness = clamp(l * 0.76, 0.22, 0.45);
+      nextSaturation = clamp(s * 0.8, 0.04, 0.68);
+    }
+  }
+
+  const converted = hslToRgb({ h, s: nextSaturation, l: nextLightness });
+  return formatColor({ ...converted, a: parsedColor.a });
+}
+
+function buildDarkStyleDefinitions<T extends Record<string, Record<string, unknown>>>(definitions: T): T {
+  const darkDefinitions = {} as T;
+
+  Object.entries(definitions).forEach(([styleName, styleDefinition]) => {
+    const transformedStyle: Record<string, unknown> = {};
+
+    Object.entries(styleDefinition).forEach(([styleKey, styleValue]) => {
+      if (typeof styleValue === "string" && isColorStyleKey(styleKey)) {
+        transformedStyle[styleKey] = transformColorForDarkMode(styleValue, styleKey);
+      } else {
+        transformedStyle[styleKey] = styleValue;
+      }
+    });
+
+    darkDefinitions[styleName as keyof T] = transformedStyle as T[keyof T];
+  });
+
+  return darkDefinitions;
+}
+
+const lightStyles = StyleSheet.create(lightStyleDefinitions as any) as Record<string, any>;
+const darkStyles = StyleSheet.create(
+  buildDarkStyleDefinitions(lightStyleDefinitions) as any,
+) as Record<string, any>;
+
+export type MainScreenStyles = Record<string, any>;
+
+export function getMainScreenStyles(theme: ResolvedTheme): MainScreenStyles {
+  return theme === "dark" ? darkStyles : lightStyles;
+}
+
+export function useMainScreenStyles(): MainScreenStyles {
+  const { resolvedTheme } = useMainScreenTheme();
+  return useMemo(() => getMainScreenStyles(resolvedTheme), [resolvedTheme]);
+}

@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { styles } from "../styles";
+import { useMainScreenStyles } from "../styles";
+import { pickThemeValue, useMainScreenTheme } from "../theme";
 import type { MonthlyInsight } from "../types";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
@@ -47,6 +48,9 @@ export function InsightsTab({
   showProUpsell,
   t,
 }: InsightsTabProps) {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
+
   const topMoodLabel = formatProCardHeaderLabel(t("pro.insightsTopMood", { mood: "" }));
   const topFlowLabel = formatProCardHeaderLabel(t("pro.insightsTopFlow", { flow: "" }));
 
@@ -99,7 +103,11 @@ export function InsightsTab({
           </View>
           {hasProAccess && (
             <View style={styles.proSectionBadge}>
-              <MaterialCommunityIcons name="crown" size={12} color="#F7B84B" />
+              <MaterialCommunityIcons
+                name="crown"
+                size={12}
+                color={pickThemeValue(resolvedTheme, "#F7B84B", "#F1C66C")}
+              />
               <Text style={styles.proSectionBadgeText}>PRO</Text>
             </View>
           )}
@@ -311,7 +319,11 @@ export function InsightsTab({
 
                   <View style={styles.cycleStatsRow}>
                     <View style={styles.cycleStatItem}>
-                      <View style={[styles.cycleStatIcon, { backgroundColor: "#FCEEF4" }]}>
+                      <View
+                        style={[
+                          styles.cycleStatIcon,
+                          { backgroundColor: pickThemeValue(resolvedTheme, "#FCEEF4", "#5C2C3A") },
+                        ]}>
                         <MaterialCommunityIcons name="water" size={14} color="#D4587A" />
                       </View>
                       <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
@@ -321,7 +333,11 @@ export function InsightsTab({
                     </View>
 
                     <View style={styles.cycleStatItem}>
-                      <View style={[styles.cycleStatIcon, { backgroundColor: "#FDF1D9" }]}>
+                      <View
+                        style={[
+                          styles.cycleStatIcon,
+                          { backgroundColor: pickThemeValue(resolvedTheme, "#FDF1D9", "#5E4B2A") },
+                        ]}>
                         <MaterialCommunityIcons name="egg" size={14} color="#E6A84D" />
                       </View>
                       <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
@@ -331,7 +347,11 @@ export function InsightsTab({
                     </View>
 
                     <View style={styles.cycleStatItem}>
-                      <View style={[styles.cycleStatIcon, { backgroundColor: "#ECF8F1" }]}>
+                      <View
+                        style={[
+                          styles.cycleStatIcon,
+                          { backgroundColor: pickThemeValue(resolvedTheme, "#ECF8F1", "#2F5742") },
+                        ]}>
                         <MaterialCommunityIcons name="leaf" size={14} color="#4A9D6E" />
                       </View>
                       <Text style={[styles.cycleStatValue, isActive && styles.cycleStatValueActive]}>
@@ -346,13 +366,19 @@ export function InsightsTab({
                       <View
                         style={[
                           styles.cycleMiniBar,
-                          { width: `${periodPercent}%`, backgroundColor: "#D4587A" },
+                          {
+                            width: `${periodPercent}%`,
+                            backgroundColor: pickThemeValue(resolvedTheme, "#D4587A", "#EA7397"),
+                          },
                         ]}
                       />
                       <View
                         style={[
                           styles.cycleMiniBar,
-                          { width: `${fertilityPercent}%`, backgroundColor: "#4A9D6E" },
+                          {
+                            width: `${fertilityPercent}%`,
+                            backgroundColor: pickThemeValue(resolvedTheme, "#4A9D6E", "#66BB8A"),
+                          },
                         ]}
                       />
                     </View>

@@ -12,7 +12,8 @@ import {
   View,
 } from "react-native";
 import { FREE_AI_DAILY_LIMIT } from "../constants";
-import { styles } from "../styles";
+import { useMainScreenStyles } from "../styles";
+import { pickThemeValue, useMainScreenTheme } from "../theme";
 import type { AiMessage } from "../types";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
@@ -46,13 +47,16 @@ export function AiTab({
   setAiInput,
   t,
 }: AiTabProps) {
+  const styles = useMainScreenStyles();
+  const { resolvedTheme } = useMainScreenTheme();
+
   return (
     <KeyboardAvoidingView
       style={styles.aiPageWrap}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={74}>
       <LinearGradient
-        colors={["#F4EDFC", "#FCEEF5"]}
+        colors={pickThemeValue(resolvedTheme, ["#F4EDFC", "#FCEEF5"], ["#2A1F36", "#211D30"])}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.aiHeroCard}>
@@ -133,7 +137,7 @@ export function AiTab({
           value={aiInput}
           onChangeText={setAiInput}
           placeholder={t("ai.placeholder")}
-          placeholderTextColor="#9A8BA0"
+          placeholderTextColor={pickThemeValue(resolvedTheme, "#9A8BA0", "#B7ADBE")}
           style={styles.aiInput}
           returnKeyType="send"
           editable={!isAiLockedForFree}
