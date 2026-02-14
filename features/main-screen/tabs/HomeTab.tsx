@@ -4,8 +4,8 @@ import { Pressable, ScrollView, Text, TouchableOpacity, View } from "react-nativ
 import { WEEK_DAY_KEYS } from "../constants";
 import { useMainScreenStyles } from "../styles";
 import { pickThemeValue, useMainScreenTheme } from "../theme";
-import { isSameDay, startOfDay } from "../utils";
 import type { DecoratedCalendarDay, ProfileAvatarIcon } from "../types";
+import { isSameDay, startOfDay } from "../utils";
 
 type TranslationFn = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -129,16 +129,36 @@ export function HomeTab({
         </View>
 
         <View style={styles.calendarGrid}>
-          {decoratedHomeDays.map((day) => {
-            const isSelectedDate = isSameDay(day.date, selectedCalendarDate);
-            const dayCategoryStyle =
+          {(() => {
+            const isDark = resolvedTheme === "dark";
+            return decoratedHomeDays.map((day) => {
+              const isSelectedDate = isSameDay(day.date, selectedCalendarDate);
+              const isOutsideCurrentMonth = !day.isCurrentMonth;
+              const dayCategoryStyle =
               day.category === "period"
-                ? styles.dayPeriod
+                ? isDark
+                  ? { backgroundColor: "#D8C3F9" }
+                  : styles.dayPeriod
                 : day.category === "ovulation"
-                  ? styles.dayOvulation
+                  ? isDark
+                    ? { backgroundColor: "#BFDDFE" }
+                    : styles.dayOvulation
                   : day.category === "fertility"
-                    ? styles.dayFertility
+                    ? isDark
+                      ? { backgroundColor: "#CDEFD9" }
+                      : styles.dayFertility
                     : null;
+
+            const dayCategoryTextStyle = dayCategoryStyle
+              ? {
+                  color: "#4C3A70",
+                  fontWeight: "700",
+                }
+              : null;
+            const outsideMonthCellStyle =
+              isOutsideCurrentMonth && resolvedTheme === "dark" ? { opacity: 0.56 } : null;
+            const outsideMonthTextStyle =
+              isOutsideCurrentMonth && resolvedTheme === "dark" ? { color: "#7C768C" } : null;
 
             return (
               <Pressable
@@ -146,7 +166,8 @@ export function HomeTab({
                 onPress={() => onSelectCalendarDate(startOfDay(day.date))}
                 style={[
                   styles.dayCell,
-                  !day.isCurrentMonth && styles.dayCellMuted,
+                  isOutsideCurrentMonth && styles.dayCellMuted,
+                  outsideMonthCellStyle,
                   dayCategoryStyle,
                   isSelectedDate && styles.selectedCalendarDayOutline,
                   day.isToday && styles.todayOutline,
@@ -154,45 +175,68 @@ export function HomeTab({
                 <Text
                   style={[
                     styles.dayCellText,
-                    !day.isCurrentMonth && styles.dayCellTextMuted,
+                    isOutsideCurrentMonth && styles.dayCellTextMuted,
+                    outsideMonthTextStyle,
                     dayCategoryStyle && styles.dayCellTextSelected,
+                    dayCategoryTextStyle,
                   ]}>
                   {day.dayNumber}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  </Text>
+                </Pressable>
+              );
+            });
+          })()}
         </View>
 
-        <View style={styles.legendRow}>
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: pickThemeValue(resolvedTheme, "#D8C3F9", "#9A77C8") },
-              ]}
-            />
-            <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: pickThemeValue(resolvedTheme, "#BFDDFE", "#6A8FC2") },
-              ]}
-            />
-            <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View
-              style={[
-                styles.legendDot,
-                { backgroundColor: pickThemeValue(resolvedTheme, "#CDEFD9", "#6CA184") },
-              ]}
-            />
-            <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
-          </View>
-        </View>
+        {(() => {
+          const isDark = resolvedTheme === "dark";
+          return (
+            <>
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      {
+                        backgroundColor: isDark
+                          ? "#D8C3F9"
+                          : pickThemeValue(resolvedTheme, "#D8C3F9", "#9A77C8"),
+                      },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>{t("home.legendPeriod")}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      {
+                        backgroundColor: isDark
+                          ? "#BFDDFE"
+                          : pickThemeValue(resolvedTheme, "#BFDDFE", "#6A8FC2"),
+                      },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>{t("home.legendOvulation")}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      {
+                        backgroundColor: isDark
+                          ? "#CDEFD9"
+                          : pickThemeValue(resolvedTheme, "#CDEFD9", "#6CA184"),
+                      },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
+                </View>
+              </View>
+
+            </>
+          );
+        })()}
 
         <Text style={styles.calendarHintText}>{t("home.calendarHint")}</Text>
 
