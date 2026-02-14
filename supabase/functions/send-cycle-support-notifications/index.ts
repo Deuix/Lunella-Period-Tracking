@@ -267,6 +267,26 @@ function buildCandidate(row: ProfileRow, now: Date): { candidate: Candidate | nu
   }
 
   const language = normalizeLanguage(row.language || "en");
+  const isTwoDaysBeforeExpectedPeriod = cycleDay === cycleLength - 1;
+
+  if (
+    row.reminders_enabled
+    && isTwoDaysBeforeExpectedPeriod
+    && row.last_support_notification_on !== local.dateISO
+  ) {
+    return {
+      candidate: {
+        installationId: row.installation_id,
+        token,
+        localDateISO: local.dateISO,
+        periodDay: cycleDay,
+        type: "period",
+        title: "Lunella reminder",
+        body: "Your next period may start inn 2 days.",
+      },
+      isInvalidToken: false,
+    };
+  }
 
   if (row.reminders_enabled && cycleDay <= periodLength && row.last_support_notification_on !== local.dateISO) {
     return {

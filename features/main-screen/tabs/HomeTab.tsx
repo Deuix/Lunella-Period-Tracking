@@ -110,7 +110,7 @@ export function HomeTab({
               style={[styles.monthChip, isSelected && styles.monthChipActive]}
               onPress={() => onSelectMonthIndex(index)}>
               <Text style={[styles.monthChipText, isSelected && styles.monthChipTextActive]}>
-                {monthOption.toLocaleDateString(dateLocale, { month: "short", year: "2-digit" })}
+                {monthOption.toLocaleDateString(dateLocale, { month: "short" })}
               </Text>
             </TouchableOpacity>
           );
