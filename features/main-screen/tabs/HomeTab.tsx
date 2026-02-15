@@ -139,6 +139,10 @@ export function HomeTab({
                 ? isDark
                   ? { backgroundColor: "#D8C3F9" }
                   : styles.dayPeriod
+                : day.category === "late"
+                  ? isDark
+                    ? { backgroundColor: "#FFCDD2" }
+                    : styles.dayLate
                 : day.category === "ovulation"
                   ? isDark
                     ? { backgroundColor: "#BFDDFE" }
@@ -231,6 +235,22 @@ export function HomeTab({
                     ]}
                   />
                   <Text style={styles.legendText}>{t("home.legendFertility")}</Text>
+                </View>
+              </View>
+
+              <View style={[styles.legendRow, { marginTop: 8, justifyContent: "center" }]}>
+                <View style={styles.legendItem}>
+                  <View
+                    style={[
+                      styles.legendDot,
+                      {
+                        backgroundColor: isDark
+                          ? "#FFCDD2"
+                          : pickThemeValue(resolvedTheme, "#FFCDD2", "#E57373"),
+                      },
+                    ]}
+                  />
+                  <Text style={styles.legendText}>{t("home.legendLate")}</Text>
                 </View>
               </View>
 

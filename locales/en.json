@@ -93,6 +93,7 @@
     "legendPeriod": "Period",
     "legendOvulation": "Ovulation",
     "legendFertility": "Fertility",
+    "legendLate": "Late period",
     "periodStartsToday": "Period starts today",
     "calendarHint": "Tap any day to see pregnancy probability.",
     "periodDay": "Day {{day}}",
@@ -130,7 +131,7 @@
   "tips": {
      "sectionTitle": "Tips",
      "menstrualFlow": "Menstrual Flow",
-     "howDoYouFeel": "{{name}} how do you feel today",
+     "howDoYouFeel": "{{name}} how are you feeling today?",
      "pickMoods": "Pick as many moods as match your day.",
      "helpfulTips": "Helpful tips for girls",
      "saveToday": "Save today check-in",

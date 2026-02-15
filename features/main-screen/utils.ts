@@ -84,7 +84,23 @@ export function getDayCategory(
   lastPeriodStart: Date,
   cycleLength: number,
   periodLength: number,
+  today?: Date,
 ): DayCategory {
+  // Check for late period
+  // If we have a 'today' reference, and the target date is after the expected next period start,
+  // and the user hasn't logged a new period (implied by lastPeriodStart being old),
+  // then we stop predicting cycles and mark as late.
+  if (today) {
+    const expectedNextPeriodStart = addDays(lastPeriodStart, cycleLength);
+    // If we are past the expected start date (late)
+    if (diffInDays(today, expectedNextPeriodStart) >= 0) {
+      // Mark days from the expected start onwards as late
+      if (diffInDays(targetDate, expectedNextPeriodStart) >= 0) {
+        return "late";
+      }
+    }
+  }
+
   const diffFromBaseline = diffInDays(targetDate, lastPeriodStart);
   const cycleIndex = Math.floor(diffFromBaseline / cycleLength);
   const cycleStart = addDays(lastPeriodStart, cycleIndex * cycleLength);
@@ -95,14 +111,14 @@ export function getDayCategory(
   }
 
   const ovulationDay = cycleLength - 14;
-  const fertilityStart = ovulationDay - 5;
-  const fertilityEnd = ovulationDay + 1;
+  const daysFromOvulation = cycleDay - ovulationDay;
 
-  if (cycleDay === ovulationDay) {
+  // Highlight all high-probability days (ovulation ±1 day) in the ovulation color.
+  if (Math.abs(daysFromOvulation) <= 1) {
     return "ovulation";
   }
 
-  if (cycleDay >= fertilityStart && cycleDay <= fertilityEnd) {
+  if (daysFromOvulation >= -5 && daysFromOvulation <= 1) {
     return "fertility";
   }
 
@@ -179,7 +195,7 @@ export function buildPregnancyProbabilityDetail(
   t: (key: string, opts?: Record<string, unknown>) => string,
 ): PregnancyProbabilityDetail {
   const timing = getCycleTimingForDate(targetDate, lastPeriodStart, cycleLength);
-  const category = getDayCategory(targetDate, lastPeriodStart, cycleLength, periodLength);
+  const category = getDayCategory(targetDate, lastPeriodStart, cycleLength, periodLength, new Date());
   const isTryingToConceive = goals.includes("trying_to_conceive");
 
   let level: PregnancyProbabilityDetail["level"] = "Low";
@@ -241,7 +257,12 @@ export function buildMonthlyInsight(
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = new Date(year, month, day);
-    const category = getDayCategory(date, lastPeriodStart, cycleLength, periodLength);
+    const timing = getCycleTimingForDate(date, lastPeriodStart, cycleLength);
+    const category = getDayCategory(date, lastPeriodStart, cycleLength, periodLength, new Date());
+
+    if (timing.daysFromOvulation === 0) {
+      ovulationDayOfMonth ??= day;
+    }
 
     if (category === "period") {
       periodDays += 1;
@@ -252,7 +273,6 @@ export function buildMonthlyInsight(
 
     if (category === "ovulation") {
       ovulationDays += 1;
-      ovulationDayOfMonth ??= day;
       continue;
     }
 

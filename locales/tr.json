@@ -92,6 +92,7 @@
     "legendPeriod": "Regl",
     "legendOvulation": "Yumurtlama",
     "legendFertility": "Doğurganlık",
+    "legendLate": "Geciken regl",
     "periodStartsToday": "Reglim bugün başladı",
     "calendarHint": "Hamilelik olasılığını görmek için herhangi bir güne dokunun.",
     "periodDay": "Gün {{day}}",

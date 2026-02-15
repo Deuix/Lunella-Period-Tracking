@@ -798,7 +798,7 @@ export default function Index() {
   const decoratedHomeDays = useMemo<DecoratedCalendarDay[]>(() => {
     return buildCalendarDays(activeMonth).map((day) => ({
       ...day,
-      category: getDayCategory(day.date, lastPeriodDate, cycleLength, periodLength),
+      category: getDayCategory(day.date, lastPeriodDate, cycleLength, periodLength, new Date()),
       isToday: isSameDay(day.date, new Date()),
     }));
   }, [activeMonth, lastPeriodDate, cycleLength, periodLength]);

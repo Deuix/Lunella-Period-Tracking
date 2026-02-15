@@ -92,6 +92,7 @@
     "legendPeriod": "Месячные",
     "legendOvulation": "Овуляция",
     "legendFertility": "Фертильность",
+    "legendLate": "Задержка месячных",
     "periodStartsToday": "Месячные начались сегодня",
     "calendarHint": "Нажмите на любой день, чтобы увидеть вероятность беременности.",
     "periodDay": "День {{day}}",

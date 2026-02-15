@@ -253,6 +253,9 @@ const lightStyleDefinitions = {
   dayPeriod: {
     backgroundColor: "#D8C3F9",
   },
+  dayLate: {
+    backgroundColor: "#FFCDD2", // Light red/pink for late
+  },
   dayOvulation: {
     backgroundColor: "#BFDDFE",
   },

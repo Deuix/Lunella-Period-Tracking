@@ -47,7 +47,15 @@ test("getDayCategory classifies cycle states", () => {
     "fertility",
   );
   assert.equal(
+    getDayCategory(new Date(2025, 0, 14), lastPeriodStart, cycleLength, periodLength),
+    "ovulation",
+  );
+  assert.equal(
     getDayCategory(new Date(2025, 0, 15), lastPeriodStart, cycleLength, periodLength),
+    "ovulation",
+  );
+  assert.equal(
+    getDayCategory(new Date(2025, 0, 16), lastPeriodStart, cycleLength, periodLength),
     "ovulation",
   );
 });
@@ -88,6 +96,7 @@ test("buildMonthlyInsight produces stable month stats", () => {
   );
 
   assert.equal(insight.monthDate.getMonth(), 0);
+  assert.equal(insight.ovulationDayOfMonth, 15);
   assert.equal(insight.periodDays > 0, true);
   assert.equal(insight.fertilityDays > 0, true);
   assert.equal(insight.predictedSymptomScore >= 3, true);

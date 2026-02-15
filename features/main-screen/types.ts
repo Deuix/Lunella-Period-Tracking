@@ -1,6 +1,6 @@
 export type GoalOption = "cycle_tracking" | "trying_to_conceive" | "pregnancy_tracking";
 export type HomeTab = "home" | "insights" | "ai" | "tips" | "profile";
-export type DayCategory = "period" | "ovulation" | "fertility" | "normal";
+export type DayCategory = "period" | "ovulation" | "fertility" | "late" | "normal";
 export type BreathPhase = "ready" | "inhale" | "hold" | "exhale" | "done";
 export type ProfileView = "main" | "settings" | "edit_profile";
 export type ThemePreference = "system" | "light" | "dark";
