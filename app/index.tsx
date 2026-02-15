@@ -6,44 +6,44 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-    Alert,
-    Animated,
-    Easing,
-    Modal,
-    Pressable,
-    ScrollView,
-    Share,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useColorScheme,
-    View,
+  Alert,
+  Animated,
+  Easing,
+  Modal,
+  Pressable,
+  ScrollView,
+  Share,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useColorScheme,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-    APP_STATE_STORAGE_KEY,
-    BREATHING_STEPS,
-    BREATHING_TOTAL_ROUNDS,
-    DEFAULT_CYCLE_LENGTH,
-    DEFAULT_PERIOD_LENGTH,
-    DEFAULT_PROFILE_AVATAR_ICON,
-    DEFAULT_SELECTED_FLOW,
-    GOAL_OPTIONS,
-    INITIAL_AI_MESSAGES,
-    MENSTRUAL_FLOW_OPTIONS,
-    MOOD_OPTIONS,
-    NAV_ITEMS,
-    PROFILE_AVATAR_OPTIONS,
-    WEEK_DAY_KEYS,
+  APP_STATE_STORAGE_KEY,
+  BREATHING_STEPS,
+  BREATHING_TOTAL_ROUNDS,
+  DEFAULT_CYCLE_LENGTH,
+  DEFAULT_PERIOD_LENGTH,
+  DEFAULT_PROFILE_AVATAR_ICON,
+  DEFAULT_SELECTED_FLOW,
+  GOAL_OPTIONS,
+  INITIAL_AI_MESSAGES,
+  MENSTRUAL_FLOW_OPTIONS,
+  MOOD_OPTIONS,
+  NAV_ITEMS,
+  PROFILE_AVATAR_OPTIONS,
+  WEEK_DAY_KEYS,
 } from "../features/main-screen/constants";
 import { useAiAssistant } from "../features/main-screen/hooks/useAiAssistant";
 import { useRevenueCatPro } from "../features/main-screen/hooks/useRevenueCatPro";
 import {
-    CelebrationConfetti,
-    DecorativeBackground,
-    NumberAdjuster,
-    WelcomeIllustration,
+  CelebrationConfetti,
+  DecorativeBackground,
+  NumberAdjuster,
+  WelcomeIllustration,
 } from "../features/main-screen/shared-components";
 import { getMainScreenStyles } from "../features/main-screen/styles";
 import { AiTab } from "../features/main-screen/tabs/AiTab";
@@ -52,43 +52,43 @@ import { InsightsTab } from "../features/main-screen/tabs/InsightsTab";
 import { ProfileTab } from "../features/main-screen/tabs/ProfileTab";
 import { TipsTab } from "../features/main-screen/tabs/TipsTab";
 import {
-    MainScreenThemeProvider,
-    pickThemeValue,
-    resolveThemePreference,
+  MainScreenThemeProvider,
+  pickThemeValue,
+  resolveThemePreference,
 } from "../features/main-screen/theme";
 import type {
-    BreathPhase,
-    DecoratedCalendarDay,
-    GoalOption,
-    HomeTab,
-    PersistedAppState,
-    ProfileAvatarIcon,
-    ProfileView,
-    ProUpsellSource,
-    SymptomLogEntry,
-    ThemePreference,
+  BreathPhase,
+  DecoratedCalendarDay,
+  GoalOption,
+  HomeTab,
+  PersistedAppState,
+  ProfileAvatarIcon,
+  ProfileView,
+  ProUpsellSource,
+  SymptomLogEntry,
+  ThemePreference,
 } from "../features/main-screen/types";
 import {
-    addDays,
-    addMonths,
-    buildCalendarDays,
-    buildMonthlyInsight,
-    buildPregnancyProbabilityDetail,
-    diffInDays,
-    getCycleContext,
-    getDayCategory,
-    isSameDay,
-    startOfDay,
-    startOfMonth,
+  addDays,
+  addMonths,
+  buildCalendarDays,
+  buildMonthlyInsight,
+  buildPregnancyProbabilityDetail,
+  diffInDays,
+  getCycleContext,
+  getDayCategory,
+  isSameDay,
+  startOfDay,
+  startOfMonth,
 } from "../features/main-screen/utils";
 import { getDateLocale, type SupportedLanguage } from "../i18n";
 import {
-    clearPushInstallationId,
-    ensurePushInstallationId,
-    getDefaultDailyReminderHour,
-    getDeviceTimeZone,
-    registerForPushNotificationsAsync,
-    syncPushProfileToSupabase,
+  clearPushInstallationId,
+  ensurePushInstallationId,
+  getDefaultDailyReminderHour,
+  getDeviceTimeZone,
+  registerForPushNotificationsAsync,
+  syncPushProfileToSupabase,
 } from "../services/pushNotifications";
 import type { RevenueCatPlanId } from "../services/revenuecat";
 
@@ -1416,7 +1416,9 @@ export default function Index() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Show confirmation
-    setConfettiRunId((prev) => prev + 1);
+    if (celebrationEffectsEnabled && periodStartCelebrationEnabled) {
+      setConfettiRunId((prev) => prev + 1);
+    }
   };
 
   const handleSetAsPeriodStart = (date: Date) => {
@@ -1425,7 +1427,9 @@ export default function Index() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Show confirmation
-    setConfettiRunId((prev) => prev + 1);
+    if (celebrationEffectsEnabled && periodStartCelebrationEnabled) {
+      setConfettiRunId((prev) => prev + 1);
+    }
   };
 
   const handleSendAiMessage = useCallback(

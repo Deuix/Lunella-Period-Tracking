@@ -11,7 +11,7 @@ const EXPO_PUSH_ENDPOINT = "https://exp.host/--/api/v2/push/send";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_LIMIT = 500;
 
-type NotificationType = "period" | "fertility" | "ovulation";
+type NotificationType = "period" | "fertility" | "ovulation" | "late";
 type SupportedLanguage = "en" | "tr" | "ru";
 
 type RequestPayload = {
@@ -58,16 +58,19 @@ const TITLES: Record<SupportedLanguage, Record<NotificationType, string>> = {
     period: "You are doing enough today",
     fertility: "A gentle reminder for your body",
     ovulation: "Today is ovulation day",
+    late: "Period late?",
   },
   tr: {
     period: "Bugun elinden gelen yeterli",
     fertility: "Bedenin icin nazik bir hatirlatma",
     ovulation: "Bugun yumurtlama gunu",
+    late: "Adet gecikti mi?",
   },
   ru: {
     period: "Segodnya ty uzhe delaesh dostatochno",
     fertility: "Myagkoe napominanie dlya tvogo tela",
     ovulation: "Segodnya den ovulyacii",
+    late: "Zaderzhka?",
   },
 };
 
@@ -146,6 +149,24 @@ const OVULATION_MESSAGES: Record<SupportedLanguage, string[]> = {
     "V den ovulyacii chuvstvitelnost mozhet vyrasti. Bud berezhna k sebe.",
     "Segodnya den ovulyacii. Slushai telo i dvigaisya v svoem tempe.",
     "Korotkaya proverka: vdoh, voda i bolshe myagkosti dlya sebya.",
+  ],
+};
+
+const LATE_MESSAGES: Record<SupportedLanguage, string[]> = {
+  en: [
+    "Your period seems to be late. If it hasn't started, remember to log it when it does.",
+    "Just checking in. If your cycle is a bit longer this time, that's okay.",
+    "Your period was expected yesterday. Don't forget to track it in the app.",
+  ],
+  tr: [
+    "Adetin gecikmis gibi gorunuyor. Baslamadiysa, basladiginda kaydetmeyi unutma.",
+    "Sadece kontrol ediyoruz. Dongun bu sefer biraz daha uzunsa sorun degil.",
+    "Adetin dun bekleniyordu. Uygulamada takip etmeyi unutma.",
+  ],
+  ru: [
+    "Kazhetsya, menstruaciya zaderzhivaetsya. Esli ona ne nachalas, ne zabud otmetit ee pozzhe.",
+    "Prosto proveryaem. Esli cikl v etot raz dlinee, eto normalno.",
+    "Menstruaciya ozhidalas vchera. Ne zabud otmetit eto v prilozhenii.",
   ],
 };
 
@@ -228,6 +249,11 @@ function pickMessage(language: SupportedLanguage, type: NotificationType, dayInd
     return messages[clamp(dayIndex, 1, messages.length) - 1];
   }
 
+  if (type === "late") {
+    const messages = LATE_MESSAGES[language];
+    return messages[clamp(dayIndex, 1, messages.length) - 1];
+  }
+
   const messages = OVULATION_MESSAGES[language];
   return messages[(dayIndex - 1) % messages.length];
 }
@@ -298,6 +324,26 @@ function buildCandidate(row: ProfileRow, now: Date): { candidate: Candidate | nu
         type: "period",
         title: TITLES[language].period,
         body: pickMessage(language, "period", cycleDay),
+      },
+      isInvalidToken: false,
+    };
+  }
+
+  // Late period reminder (sent 1 day after expected start)
+  if (
+    row.reminders_enabled
+    && cycleDay === cycleLength + 1
+    && row.last_support_notification_on !== local.dateISO
+  ) {
+    return {
+      candidate: {
+        installationId: row.installation_id,
+        token,
+        localDateISO: local.dateISO,
+        periodDay: cycleDay,
+        type: "late",
+        title: TITLES[language].late,
+        body: pickMessage(language, "late", 1),
       },
       isInvalidToken: false,
     };
@@ -460,6 +506,7 @@ Deno.serve(async (req: Request) => {
       period: candidates.filter((item) => item.type === "period").length,
       fertility: candidates.filter((item) => item.type === "fertility").length,
       ovulation: candidates.filter((item) => item.type === "ovulation").length,
+      late: candidates.filter((item) => item.type === "late").length,
     };
 
     if (dryRun) {
@@ -510,7 +557,7 @@ Deno.serve(async (req: Request) => {
         push_token_invalid_at: null,
       };
 
-      if (item.type === "period") {
+      if (item.type === "period" || item.type === "late") {
         updatePayload.last_support_notification_on = item.localDateISO;
         updatePayload.last_support_period_day = item.periodDay;
       }
